@@ -6,3 +6,5 @@ edge-tts
 pydantic
 twilio
 python-dotenv
+itsdangerous
+python-multipart
