@@ -1,0 +1,8 @@
+fastmcp
+fastapi
+uvicorn
+openai
+edge-tts
+pydantic
+twilio
+python-dotenv

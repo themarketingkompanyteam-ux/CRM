@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice CRM & LLM Failover</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8 border-b border-slate-800 pb-4">
+            <div>
+                <h1 class="text-2xl font-bold flex items-center gap-2">
+                    <span class="text-indigo-500">⚡</span> AI Voice CRM & LLM Failover
+                </h1>
+                <p class="text-sm text-slate-400">Manage your leads and switch active AI inference endpoints seamlessly.</p>
+            </div>
+            <button onclick="loadData()" class="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm transition">Refresh Data</button>
+        </div>
+
+        <!-- Live Status Banner -->
+        <div id="call-status-banner" class="hidden mb-6 p-4 rounded-xl border border-indigo-500/30 bg-indigo-950/40 text-indigo-200">
+            <h3 class="font-semibold text-indigo-400 flex items-center gap-2">
+                <span>📞</span> <span id="banner-mode">Call Dispatched</span>
+            </h3>
+            <p id="banner-speech" class="text-sm mt-1 text-slate-300"></p>
+        </div>
+
+        <!-- LLM Providers Section -->
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl mb-8">
+            <h2 class="text-lg font-semibold mb-2">LLM Provider Failover & Specs</h2>
+            <p class="text-xs text-slate-400 mb-4">Select active inference endpoint for lead outreach.</p>
+            <div id="providers-container" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+        <!-- Main Content Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Add Lead Form -->
+            <div class="bg-slate-900 border border-slate-800 p-6 rounded-2xl h-fit">
+                <h2 class="text-lg font-semibold mb-4 flex items-center gap-2"><span>👤</span> Add Lead</h2>
+                <form id="add-lead-form" onsubmit="addLead(event)" class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Full Name</label>
+                        <input type="text" id="lead-name" required class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" placeholder="John Doe">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Phone Number (+1...)</label>
+                        <input type="text" id="lead-phone" required class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" placeholder="+1234567890">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1">Notes / Intent</label>
+                        <textarea id="lead-notes" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" placeholder="Interested in voice AI integration..."></textarea>
+                    </div>
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 py-2 rounded-lg font-medium text-sm transition">Save Lead</button>
+                </form>
+            </div>
+
+            <!-- Lead Pipeline Table -->
+            <div class="lg:col-span-2 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold flex items-center gap-2"><span>📊</span> Lead Pipeline</h2>
+                    <div class="flex gap-2">
+                        <input type="text" id="search-box" oninput="loadLeads()" placeholder="Search name/phone..." class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500">
+                        <a href="/api/leads/export" class="bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg text-xs transition flex items-center">Export CSV</a>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-950 text-slate-400 text-xs uppercase border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">Name</th>
+                                <th class="p-3">Phone</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leads-table-body" class="divide-y divide-slate-800/50">
+                            <!-- Injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            loadProviders();
+            loadLeads();
+        }
+
+        async function loadProviders() {
+            try {
+                const res = await fetch('/api/providers');
+                const data = await res.json();
+                const container = document.getElementById('providers-container');
+                container.innerHTML = '';
+
+                data.providers.forEach(p => {
+                    const isActive = p.id === data.active_id;
+                    container.innerHTML += `
+                        <div onclick="selectProvider(${p.id})" class="cursor-pointer border ${isActive ? 'border-indigo-500 bg-indigo-950/20' : 'border-slate-800 bg-slate-950'} p-4 rounded-xl transition hover:border-indigo-400">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="font-semibold text-sm">${p.name}</span>
+                                ${isActive ? '<span class="bg-indigo-600 text-[10px] px-2 py-0.5 rounded-full font-bold">ACTIVE</span>' : ''}
+                            </div>
+                            <p class="text-xs text-slate-400">Model: ${p.model}</p>
+                            <p class="text-xs text-slate-500 mt-1">Latency: ${p.latency}</p>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                console.error("Failed to load providers", err);
+            }
+        }
+
+        async function selectProvider(id) {
+            await fetch('/api/providers/select', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({provider_id: id})
+            });
+            loadProviders();
+        }
+
+        async function loadLeads() {
+            const search = document.getElementById('search-box').value;
+            try {
+                const res = await fetch(`/api/leads?search=${encodeURIComponent(search)}`);
+                const leads = await res.json();
+                const tbody = document.getElementById('leads-table-body');
+                tbody.innerHTML = '';
+
+                if (leads.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-slate-500">No leads found.</td></tr>`;
+                    return;
+                }
+
+                leads.forEach(l => {
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-slate-950/50">
+                            <td class="p-3 font-medium">${l.name}</td>
+                            <td class="p-3 text-slate-400">${l.phone}</td>
+                            <td class="p-3"><span class="px-2 py-1 rounded text-xs ${l.status === 'Contacted' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-slate-800 text-slate-300'}">${l.status}</span></td>
+                            <td class="p-3 text-right space-x-2">
+                                <button onclick="dispatchCall('${l.phone}')" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1 rounded text-xs transition">Dispatch Call</button>
+                                <button onclick="deleteLead(${l.id})" class="text-red-400 hover:text-red-300 text-xs px-2 py-1">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } catch (err) {
+                console.error("Failed to load leads", err);
+            }
+        }
+
+        async function addLead(event) {
+            event.preventDefault();
+            const name = document.getElementById('lead-name').value;
+            const phone = document.getElementById('lead-phone').value;
+            const notes = document.getElementById('lead-notes').value;
+
+            await fetch('/api/leads', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({name, phone, notes})
+            });
+
+            document.getElementById('add-lead-form').reset();
+            loadLeads();
+        }
+
+        async function deleteLead(id) {
+            if (confirm("Are you sure you want to delete this lead?")) {
+                await fetch(`/api/leads/${id}`, {method: 'DELETE'});
+                loadLeads();
+            }
+        }
+
+        async function dispatchCall(phone) {
+            try {
+                const res = await fetch('/api/call', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        phone: phone,
+                        live_telephony: false
+                    })
+                });
+                
+                if (!res.ok) {
+                    throw new Error("Server responded with error status: " + res.status);
+                }
+
+                const data = await res.json();
+                
+                // Show banner instead of browser alert popup
+                const banner = document.getElementById('call-status-banner');
+                document.getElementById('banner-mode').innerText = `Call Result (${data.call_mode}):`;
+                document.getElementById('banner-speech').innerText = `AI Speech: "${data.ai_reply}"`;
+                banner.classList.remove('hidden');
+                
+                loadLeads();
+            } catch (err) {
+                console.error(err);
+                alert("Error dispatching call: " + err.message);
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
