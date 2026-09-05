@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "worker": "tsx watch --env-file=.env.local src/workers/import-worker.ts",
+    "worker": "tsx watch --env-file=.env.local src/workers/all.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

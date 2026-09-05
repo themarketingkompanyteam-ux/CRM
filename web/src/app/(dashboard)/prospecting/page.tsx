@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CallDialog, CallLead } from "@/components/call-dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type QueueLead = CallLead & {
   email: string | null;
@@ -13,10 +14,25 @@ type QueueLead = CallLead & {
   callAttempts: number;
 };
 
+type EnrichedLead = {
+  id: number;
+  name: string;
+  jobTitle: string | null;
+  companyName: string | null;
+  email: string | null;
+  phone: string | null;
+  leadStatus: string;
+  confidence: number | null;
+  provider: string | null;
+  enrichedAt: string | null;
+  lastCalledAt: string | null;
+};
+
 type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
 
 export default function ProspectingPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState("regular");
   const { data: stats } = useQuery({
     queryKey: ["prospecting-stats"],
     queryFn: () => apiFetch<Stats>("/api/prospecting/stats"),
@@ -26,8 +42,12 @@ export default function ProspectingPage() {
     queryKey: ["prospecting-queue"],
     queryFn: () => apiFetch<QueueLead[]>("/api/prospecting/queue"),
   });
+  const { data: enrichedLeads, isLoading: enrichedLoading } = useQuery({
+    queryKey: ["prospecting-enriched"],
+    queryFn: () => apiFetch<EnrichedLead[]>("/api/prospecting/enriched"),
+  });
 
-  const [activeLead, setActiveLead] = useState<QueueLead | null>(null);
+  const [activeLead, setActiveLead] = useState<CallLead | null>(null);
 
   async function getNextInQueue(currentId: number): Promise<CallLead | null> {
     const freshQueue = await queryClient.fetchQuery({
@@ -62,33 +82,83 @@ export default function ProspectingPage() {
         </div>
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">TODAY&apos;S CALLS</h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {isLoading && <div className="text-sm text-muted-foreground">Loading queue...</div>}
-        {!isLoading && (queue?.length ?? 0) === 0 && (
-          <div className="text-sm text-muted-foreground">
-            Nothing left to call today — everyone&apos;s been contacted or has no phone number.
-          </div>
-        )}
-        {queue?.map((lead) => (
-          <div key={lead.id} className="rounded-xl border bg-card p-4">
-            <div className="mb-1 flex items-center justify-between">
-              <div className="font-semibold">{lead.firstName} {lead.lastName}</div>
-              <TempBadge status={lead.leadStatus} />
-            </div>
-            <div className="mb-1 text-sm text-muted-foreground">{lead.companyName || "—"}</div>
-            <div className="mb-3 text-sm">{lead.phone}</div>
-            <div className="mb-3 text-xs text-muted-foreground">
-              {lead.callAttempts > 0 ? `Previous: ${lead.callAttempts} attempt(s)` : "Previous: Never called"}
-            </div>
-            <Button className="w-full bg-primary text-primary-foreground" onClick={() => setActiveLead(lead)}>
-              📞 Call
-            </Button>
-          </div>
-        ))}
-      </div>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="mb-5">
+          <TabsTrigger value="regular">Regular Leads</TabsTrigger>
+          <TabsTrigger value="enriched">Enriched Leads {enrichedLeads ? `(${enrichedLeads.length})` : ""}</TabsTrigger>
+        </TabsList>
 
-      <CallDialog lead={activeLead} onClose={() => setActiveLead(null)} getNext={getNextInQueue} />
+        <TabsContent value="regular">
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">TODAY&apos;S CALLS</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {isLoading && <div className="text-sm text-muted-foreground">Loading queue...</div>}
+            {!isLoading && (queue?.length ?? 0) === 0 && (
+              <div className="text-sm text-muted-foreground">
+                Nothing left to call today — everyone&apos;s been contacted or has no phone number.
+              </div>
+            )}
+            {queue?.map((lead) => (
+              <div key={lead.id} className="rounded-xl border bg-card p-4">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="font-semibold">{lead.firstName} {lead.lastName}</div>
+                  <TempBadge status={lead.leadStatus} />
+                </div>
+                <div className="mb-1 text-sm text-muted-foreground">{lead.companyName || "—"}</div>
+                <div className="mb-3 text-sm">{lead.phone}</div>
+                <div className="mb-3 text-xs text-muted-foreground">
+                  {lead.callAttempts > 0 ? `Previous: ${lead.callAttempts} attempt(s)` : "Previous: Never called"}
+                </div>
+                <Button className="w-full bg-primary text-primary-foreground" onClick={() => setActiveLead(lead)}>
+                  📞 Call
+                </Button>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="enriched">
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
+            ENRICHED LEADS — pushed from the Enrichment page
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {enrichedLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+            {!enrichedLoading && (enrichedLeads?.length ?? 0) === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No enriched leads yet — enrich contacts on the Enrichment page and push them here.
+              </div>
+            )}
+            {enrichedLeads?.map((lead) => (
+              <div key={lead.id} className="rounded-xl border bg-card p-4">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="font-semibold">{lead.name}</div>
+                  <TempBadge status={lead.leadStatus} />
+                </div>
+                <div className="mb-1 text-sm text-muted-foreground">
+                  {lead.jobTitle} {lead.jobTitle && lead.companyName ? "·" : ""} {lead.companyName}
+                </div>
+                {lead.email && <div className="mb-1 text-sm">{lead.email}</div>}
+                {lead.phone && <div className="mb-2 text-sm">{lead.phone}</div>}
+                {lead.confidence !== null && (
+                  <div className="mb-2 text-xs text-primary">
+                    Confidence: {lead.confidence}% · {lead.provider}
+                  </div>
+                )}
+                <Button
+                  className="w-full bg-primary text-primary-foreground"
+                  disabled={!lead.phone}
+                  onClick={() =>
+                    setActiveLead({ id: lead.id, firstName: lead.name, lastName: null, phone: lead.phone, companyName: lead.companyName })
+                  }
+                >
+                  📞 {lead.phone ? "Start Call" : "No phone"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <CallDialog lead={activeLead} onClose={() => setActiveLead(null)} getNext={tab === "regular" ? getNextInQueue : undefined} />
     </div>
   );
 }

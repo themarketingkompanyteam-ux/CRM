@@ -12,6 +12,7 @@ const items = [
   { href: "/prospecting", label: "Prospecting", icon: "📞" },
   { href: "/calls", label: "Call History", icon: "📋" },
   { href: "/leads", label: "Leads", icon: "🔥" },
+  { href: "/enrichment", label: "Enrichment", icon: "🔌" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
@@ -11,7 +11,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { CallDialog, CallLead } from "@/components/call-dialog";
+import { toast } from "sonner";
 
 type Lead = {
   id: number;
@@ -27,6 +35,7 @@ type Lead = {
 };
 
 type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
+type AvailableCounts = { hot: number; warm: number; cold: number; total: number };
 
 const BUCKETS = [
   { key: "Hot", label: "🔥 Hot Leads" },
@@ -45,8 +54,10 @@ function fmtDate(iso: string | null) {
 }
 
 export default function LeadsPage() {
+  const queryClient = useQueryClient();
   const [bucket, setBucket] = useState("Hot");
   const [activeLead, setActiveLead] = useState<CallLead | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ["leads", bucket],
@@ -72,14 +83,54 @@ export default function LeadsPage() {
     CallBack: callBackLeads?.length,
   };
 
+  const enrichOneMutation = useMutation({
+    mutationFn: (contactId: number) =>
+      apiFetch<{ success: boolean; providerUsed?: string }>("/api/enrichment/enrich", { method: "POST", body: JSON.stringify({ contactId }) }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      if (data.success) toast.success(`Enriched via ${data.providerUsed}`);
+      else toast.error("No provider found a match");
+    },
+  });
+
+  const pushToQueueMutation = useMutation({
+    mutationFn: (contactIds: number[]) =>
+      apiFetch<{ count: number }>("/api/enrichment/queue", { method: "POST", body: JSON.stringify({ contactIds, source: "manual" }) }),
+    onSuccess: (data) => {
+      toast.success(`Pushed ${data.count} lead(s) to Enrichment queue`);
+      setSelected(new Set());
+    },
+  });
+
+  function toggle(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold">Leads</h1>
-        <p className="text-sm text-muted-foreground">
-          Everyone marked Hot, Warm, or due for a callback — from Prospecting calls
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Leads</h1>
+          <p className="text-sm text-muted-foreground">
+            Everyone marked Hot, Warm, or due for a callback — from Prospecting calls
+          </p>
+        </div>
+        <EnrichAvailableLeadsDialog />
       </div>
+
+      {selected.size > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border bg-secondary/40 px-4 py-2 text-sm">
+          <span>{selected.size} selected</span>
+          <Button size="sm" variant="outline" onClick={() => pushToQueueMutation.mutate([...selected])}>
+            Push to Enrichment
+          </Button>
+        </div>
+      )}
 
       <Tabs value={bucket} onValueChange={setBucket}>
         <TabsList className="mb-5">
@@ -99,12 +150,16 @@ export default function LeadsPage() {
               )}
               {leads?.map((lead) => (
                 <div key={lead.id} className="rounded-xl border bg-card p-4">
-                  <div className="mb-1 flex items-center justify-between">
-                    <div className="font-semibold">{lead.name}</div>
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggle(lead.id)} />
+                      <span className="font-semibold">{lead.name}</span>
+                    </label>
                     <LeadBadge status={lead.leadStatus} />
                   </div>
                   <div className="mb-1 text-sm text-muted-foreground">{lead.companyName || "—"}</div>
                   <div className="mb-2 text-sm">{lead.phone}</div>
+                  {lead.email && <div className="mb-2 text-xs text-muted-foreground">{lead.email}</div>}
                   {lead.lastOutcome && (
                     <div className="mb-1 text-xs text-primary">Last outcome: {lead.lastOutcome}</div>
                   )}
@@ -123,21 +178,31 @@ export default function LeadsPage() {
                       Last called: {fmtDate(lead.lastCallAt)}
                     </div>
                   )}
-                  <Button
-                    className="w-full bg-primary text-primary-foreground"
-                    disabled={!lead.phone}
-                    onClick={() =>
-                      setActiveLead({
-                        id: lead.id,
-                        firstName: lead.name,
-                        lastName: null,
-                        phone: lead.phone,
-                        companyName: lead.companyName,
-                      })
-                    }
-                  >
-                    📞 {lead.phone ? "Call" : "No phone number"}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      className="flex-1 bg-primary text-primary-foreground"
+                      disabled={!lead.phone}
+                      onClick={() =>
+                        setActiveLead({
+                          id: lead.id,
+                          firstName: lead.name,
+                          lastName: null,
+                          phone: lead.phone,
+                          companyName: lead.companyName,
+                        })
+                      }
+                    >
+                      📞 {lead.phone ? "Call" : "No phone"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      disabled={!!lead.email || enrichOneMutation.isPending}
+                      onClick={() => enrichOneMutation.mutate(lead.id)}
+                      title={lead.email ? "Already has an email" : "Find email via enrichment"}
+                    >
+                      Enrich
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -147,6 +212,72 @@ export default function LeadsPage() {
 
       <CallDialog lead={activeLead} onClose={() => setActiveLead(null)} />
     </div>
+  );
+}
+
+function EnrichAvailableLeadsDialog() {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("hot");
+
+  const { data: available } = useQuery({
+    queryKey: ["leads-available"],
+    queryFn: () => apiFetch<AvailableCounts>("/api/leads/available"),
+    enabled: open,
+  });
+
+  const queueMutation = useMutation({
+    mutationFn: () => apiFetch<{ count: number }>("/api/enrichment/enrich-bulk", { method: "POST", body: JSON.stringify({ mode }) }),
+    onSuccess: (data) => {
+      toast.success(`Queued ${data.count} lead(s) for enrichment. Go to Enrichment → Enrich Queued Contacts to run them.`);
+      setOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["enrichment-queue"] });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button className="bg-primary text-primary-foreground">+ Enrich Available Leads</Button>} />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Enrich Available Leads</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">You currently have:</p>
+          <ul className="space-y-1">
+            <li>{available?.total ?? "…"} leads available to enrich</li>
+            <li>🔥 {available?.hot ?? "…"} Hot leads</li>
+            <li>🟠 {available?.warm ?? "…"} Warm leads</li>
+            <li>❄️ {available?.cold ?? "…"} Cold leads</li>
+          </ul>
+          <div>
+            <p className="mb-2 text-muted-foreground">Choose what to enrich:</p>
+            <div className="space-y-2">
+              {[
+                { key: "hot", label: `Hot leads only (${available?.hot ?? "…"})` },
+                { key: "hot_warm", label: `Hot + Warm (${(available?.hot ?? 0) + (available?.warm ?? 0)})` },
+                { key: "all", label: `All available leads (${available?.total ?? "…"})` },
+              ].map((opt) => (
+                <label key={opt.key} className="flex items-center gap-2">
+                  <input type="radio" name="mode" checked={mode === opt.key} onChange={() => setMode(opt.key)} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This only queues leads — no enrichment credits are spent until you click &quot;Enrich Queued Contacts&quot;
+            on the Enrichment page.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button className="bg-primary text-primary-foreground" disabled={queueMutation.isPending} onClick={() => queueMutation.mutate()}>
+              Continue
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

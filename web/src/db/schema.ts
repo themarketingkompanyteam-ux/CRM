@@ -56,6 +56,17 @@ export const contacts = pgTable(
     companyId: integer("company_id").references(() => companies.id, {
       onDelete: "set null",
     }),
+    companyDomain: text("company_domain"),
+    linkedinUrl: text("linkedin_url"),
+    enrichmentStatus: varchar("enrichment_status", { length: 30 })
+      .default("NOT_ENRICHED")
+      .notNull(),
+    enrichmentConfidence: integer("enrichment_confidence"),
+    enrichmentProvider: varchar("enrichment_provider", { length: 40 }),
+    enrichedAt: timestamp("enriched_at"),
+    pushedToProspectingEnriched: integer("pushed_to_prospecting_enriched")
+      .default(0)
+      .notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -65,8 +76,159 @@ export const contacts = pgTable(
     index("contacts_company_idx").on(table.companyId),
     index("contacts_name_idx").on(table.firstName, table.lastName),
     index("contacts_lead_status_idx").on(table.leadStatus),
+    index("contacts_enrichment_status_idx").on(table.enrichmentStatus),
   ]
 );
+
+/** Multi-value emails with provenance — never blindly overwrites contacts.email. */
+export const contactEmails = pgTable(
+  "contact_emails",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    email: varchar("email", { length: 255 }).notNull(),
+    type: varchar("type", { length: 20 }).default("unknown"), // primary/secondary/personal/work/unknown
+    provider: varchar("provider", { length: 40 }),
+    confidence: integer("confidence"),
+    verificationStatus: varchar("verification_status", { length: 20 }), // valid/invalid/unknown/risky
+    foundAt: timestamp("found_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("contact_emails_unique").on(table.contactId, table.email),
+    index("contact_emails_contact_idx").on(table.contactId),
+  ]
+);
+
+/** Multi-value phones with provenance. */
+export const contactPhones = pgTable(
+  "contact_phones",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    phone: varchar("phone", { length: 50 }).notNull(),
+    type: varchar("type", { length: 20 }).default("unknown"), // primary/mobile/direct/office/unknown
+    provider: varchar("provider", { length: 40 }),
+    confidence: integer("confidence"),
+    foundAt: timestamp("found_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("contact_phones_unique").on(table.contactId, table.phone),
+    index("contact_phones_contact_idx").on(table.contactId),
+  ]
+);
+
+export const ENRICHMENT_PROVIDER_KEYS = [
+  "prospeo",
+  "findymail",
+  "bettercontact",
+  "datagma",
+  "snov",
+  "fullenrich",
+] as const;
+
+/** Operational status/config per provider. Credentials live in env vars, never here. */
+export const enrichmentProviders = pgTable("enrichment_providers", {
+  key: varchar("key", { length: 40 }).primaryKey(),
+  enabled: integer("enabled").default(1).notNull(),
+  priority: integer("priority").default(99).notNull(),
+  supportsEmail: integer("supports_email").default(1).notNull(),
+  supportsPhone: integer("supports_phone").default(0).notNull(),
+  maxDailyUsage: integer("max_daily_usage"),
+  maxMonthlyUsage: integer("max_monthly_usage"),
+  status: varchar("status", { length: 20 }).default("UNKNOWN").notNull(), // CONNECTED/AUTH_ERROR/RATE_LIMITED/OUT_OF_CREDITS/UNKNOWN
+  rateLimitedUntil: timestamp("rate_limited_until"),
+  creditsRemaining: integer("credits_remaining"),
+  creditsCheckedAt: timestamp("credits_checked_at"),
+  lastTestedAt: timestamp("last_tested_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  lastErrorAt: timestamp("last_error_at"),
+  lastErrorMessage: text("last_error_message"),
+  usageCount: integer("usage_count").default(0).notNull(),
+  successCount: integer("success_count").default(0).notNull(),
+  failureCount: integer("failure_count").default(0).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const ENRICHMENT_QUEUE_STATUSES = [
+  "QUEUED",
+  "PROCESSING",
+  "ENRICHED",
+  "NO_MATCH",
+  "NEEDS_REVIEW",
+  "FAILED",
+  "PUSHED_TO_PROSPECTING",
+] as const;
+
+export const enrichmentQueue = pgTable(
+  "enrichment_queue",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    status: varchar("status", { length: 30 }).default("QUEUED").notNull(),
+    source: varchar("source", { length: 30 }).default("manual"), // hot_leads/manual/csv_import/search
+    lastProvider: varchar("last_provider", { length: 40 }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("enrichment_queue_contact_unique").on(table.contactId),
+    index("enrichment_queue_status_idx").on(table.status),
+  ]
+);
+
+/** One row per provider attempt — the enrichment history/audit log. Never stores secrets. */
+export const enrichmentAttempts = pgTable(
+  "enrichment_attempts",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id").references(() => contacts.id, {
+      onDelete: "cascade",
+    }),
+    queueId: integer("queue_id").references(() => enrichmentQueue.id, {
+      onDelete: "set null",
+    }),
+    provider: varchar("provider", { length: 40 }).notNull(),
+    operation: varchar("operation", { length: 30 }).notNull(), // search_email/find_phone/verify_email
+    outcome: varchar("outcome", { length: 20 }).notNull(), // SUCCESS/NO_MATCH/RATE_LIMITED/OUT_OF_CREDITS/AUTH_ERROR/FAILED
+    resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
+    confidence: integer("confidence"),
+    creditsUsed: integer("credits_used").default(0),
+    durationMs: integer("duration_ms"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("enrichment_attempts_contact_idx").on(table.contactId),
+    index("enrichment_attempts_provider_idx").on(table.provider),
+  ]
+);
+
+/** Search-new-contact results awaiting user review before becoming a real contact. */
+export const enrichmentCandidates = pgTable("enrichment_candidates", {
+  id: serial("id").primaryKey(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  jobTitle: text("job_title"),
+  companyName: text("company_name"),
+  companyDomain: text("company_domain"),
+  linkedinUrl: text("linkedin_url"),
+  emails: jsonb("emails").$type<
+    { email: string; provider: string; confidence: number; verificationStatus?: string }[]
+  >().default([]),
+  phones: jsonb("phones").$type<{ phone: string; provider: string; confidence: number }[]>().default([]),
+  confidence: integer("confidence"),
+  providerSources: jsonb("provider_sources").$type<string[]>().default([]),
+  searchQuery: jsonb("search_query").$type<Record<string, string>>(),
+  status: varchar("status", { length: 20 }).default("PENDING").notNull(), // PENDING/ADDED/DISMISSED
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
 
 export const lists = pgTable("lists", {
   id: serial("id").primaryKey(),

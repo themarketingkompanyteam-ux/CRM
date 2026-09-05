@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 type TwilioStatus = {
   connected: boolean;
@@ -15,6 +16,122 @@ type TwilioStatus = {
   apiKeySid?: string;
   fromPhone?: string;
 };
+
+type EnrichmentProvider = {
+  key: string;
+  label: string;
+  configured: boolean;
+  enabled: boolean;
+  priority: number;
+  supportsEmail: boolean;
+  supportsPhone: boolean;
+  status: string;
+  creditsRemaining: number | null;
+  lastErrorMessage: string | null;
+  usageCount: number;
+  successCount: number;
+  failureCount: number;
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  CONNECTED: "bg-green-950 text-green-400",
+  AUTH_ERROR: "bg-red-950 text-red-400",
+  RATE_LIMITED: "bg-amber-950 text-amber-400",
+  OUT_OF_CREDITS: "bg-amber-950 text-amber-400",
+  UNKNOWN: "bg-secondary text-muted-foreground",
+};
+
+function EnrichmentProvidersSection() {
+  const queryClient = useQueryClient();
+  const { data: providers } = useQuery({
+    queryKey: ["enrichment-providers"],
+    queryFn: () => apiFetch<EnrichmentProvider[]>("/api/enrichment/providers"),
+  });
+
+  const testMutation = useMutation({
+    mutationFn: (key: string) => apiFetch<{ ok: boolean; message: string }>(`/api/enrichment/providers/${key}/test`, { method: "POST" }),
+    onSuccess: (data, key) => {
+      queryClient.invalidateQueries({ queryKey: ["enrichment-providers"] });
+      if (data.ok) toast.success(`${key}: ${data.message}`);
+      else toast.error(`${key}: ${data.message}`);
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) =>
+      apiFetch(`/api/enrichment/providers/${key}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["enrichment-providers"] }),
+  });
+
+  return (
+    <Card className="mt-6 max-w-4xl">
+      <CardHeader>
+        <CardTitle className="text-sm">🔌 Enrichment Providers</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="text-xs uppercase text-muted-foreground">
+                <th className="pb-2 pr-3">Provider</th>
+                <th className="pb-2 pr-3">Status</th>
+                <th className="pb-2 pr-3">Credits</th>
+                <th className="pb-2 pr-3">Priority</th>
+                <th className="pb-2 pr-3">Email</th>
+                <th className="pb-2 pr-3">Phone</th>
+                <th className="pb-2 pr-3">Used / OK / Fail</th>
+                <th className="pb-2 pr-3">Enabled</th>
+                <th className="pb-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers?.map((p) => (
+                <tr key={p.key} className="border-t">
+                  <td className="py-2 pr-3 font-medium">{p.label}</td>
+                  <td className="py-2 pr-3">
+                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", STATUS_COLORS[p.status] ?? STATUS_COLORS.UNKNOWN)}>
+                      {p.configured ? p.status : "NOT CONFIGURED"}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3 text-muted-foreground">
+                    {p.creditsRemaining === null ? "Balance unavailable" : p.creditsRemaining}
+                  </td>
+                  <td className="py-2 pr-3">{p.priority}</td>
+                  <td className="py-2 pr-3">{p.supportsEmail ? "✓" : "—"}</td>
+                  <td className="py-2 pr-3">{p.supportsPhone ? "✓" : "—"}</td>
+                  <td className="py-2 pr-3 text-muted-foreground">
+                    {p.usageCount} / {p.successCount} / {p.failureCount}
+                  </td>
+                  <td className="py-2 pr-3">
+                    <input
+                      type="checkbox"
+                      checked={p.enabled}
+                      onChange={(e) => toggleMutation.mutate({ key: p.key, enabled: e.target.checked })}
+                    />
+                  </td>
+                  <td className="py-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!p.configured || testMutation.isPending}
+                      onClick={() => testMutation.mutate(p.key)}
+                    >
+                      Test
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Enrichment credits are only spent when you explicitly enrich a lead, push leads to the
+          Enrichment queue, or search for a new contact — never automatically for every contact.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
@@ -135,6 +252,8 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <EnrichmentProvidersSection />
     </div>
   );
 }
