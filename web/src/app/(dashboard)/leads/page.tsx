@@ -10,6 +10,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { CallDialog, CallLead } from "@/components/call-dialog";
 
 type Lead = {
   id: number;
@@ -44,6 +46,7 @@ function fmtDate(iso: string | null) {
 
 export default function LeadsPage() {
   const [bucket, setBucket] = useState("Hot");
+  const [activeLead, setActiveLead] = useState<CallLead | null>(null);
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ["leads", bucket],
@@ -116,16 +119,33 @@ export default function LeadsPage() {
                     </div>
                   )}
                   {lead.lastCallAt && (
-                    <div className="text-xs text-muted-foreground">
+                    <div className="mb-3 text-xs text-muted-foreground">
                       Last called: {fmtDate(lead.lastCallAt)}
                     </div>
                   )}
+                  <Button
+                    className="w-full bg-primary text-primary-foreground"
+                    disabled={!lead.phone}
+                    onClick={() =>
+                      setActiveLead({
+                        id: lead.id,
+                        firstName: lead.name,
+                        lastName: null,
+                        phone: lead.phone,
+                        companyName: lead.companyName,
+                      })
+                    }
+                  >
+                    📞 {lead.phone ? "Call" : "No phone number"}
+                  </Button>
                 </div>
               ))}
             </div>
           </TabsContent>
         ))}
       </Tabs>
+
+      <CallDialog lead={activeLead} onClose={() => setActiveLead(null)} />
     </div>
   );
 }

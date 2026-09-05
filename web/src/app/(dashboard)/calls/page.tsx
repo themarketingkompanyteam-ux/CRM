@@ -5,11 +5,13 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { CallDialog, CallLead } from "@/components/call-dialog";
 
 type CallRow = {
   id: number;
   contactId: number;
   name: string;
+  phone: string | null;
   companyName: string | null;
   outcome: string | null;
   leadTemperature: string | null;
@@ -50,6 +52,7 @@ const TEMP_COLORS: Record<string, string> = {
 export default function CallHistoryPage() {
   const [dateOffset, setDateOffset] = useState(0);
   const [filter, setFilter] = useState("All");
+  const [activeLead, setActiveLead] = useState<CallLead | null>(null);
 
   const date = useMemo(() => {
     const d = new Date();
@@ -141,10 +144,27 @@ export default function CallHistoryPage() {
             )}
             <div className="mb-2 text-sm">{call.outcome}</div>
             {call.notes && <div className="mb-2 text-sm italic text-muted-foreground">&quot;{call.notes}&quot;</div>}
-            <div className="text-xs text-muted-foreground">Duration: {fmtDuration(call.durationSeconds)}</div>
+            <div className="mb-3 text-xs text-muted-foreground">Duration: {fmtDuration(call.durationSeconds)}</div>
+            <Button
+              className="w-full bg-primary text-primary-foreground"
+              disabled={!call.phone}
+              onClick={() =>
+                setActiveLead({
+                  id: call.contactId,
+                  firstName: call.name,
+                  lastName: null,
+                  phone: call.phone,
+                  companyName: call.companyName,
+                })
+              }
+            >
+              📞 {call.phone ? "Call Back" : "No phone number"}
+            </Button>
           </div>
         ))}
       </div>
+
+      <CallDialog lead={activeLead} onClose={() => setActiveLead(null)} />
     </div>
   );
 }

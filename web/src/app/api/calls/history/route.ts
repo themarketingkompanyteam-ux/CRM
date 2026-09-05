@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     contact_id: number;
     first_name: string;
     last_name: string | null;
+    phone: string | null;
     company_name: string | null;
     outcome: string | null;
     lead_temperature: string | null;
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
     duration_seconds: number;
     created_at: string;
   }>(sql`
-    SELECT c.id, c.contact_id, ct.first_name, ct.last_name, co.name AS company_name,
+    SELECT c.id, c.contact_id, ct.first_name, ct.last_name, ct.phone, co.name AS company_name,
            c.outcome, c.lead_temperature, c.notes, c.duration_seconds, c.created_at
     FROM calls c
     JOIN contacts ct ON ct.id = c.contact_id
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
       id: r.id,
       contactId: r.contact_id,
       name: `${r.first_name} ${r.last_name ?? ""}`.trim(),
+      phone: r.phone,
       companyName: r.company_name,
       outcome: r.outcome,
       leadTemperature: r.lead_temperature,
