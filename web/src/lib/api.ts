@@ -20,11 +20,14 @@ export type Contact = {
   website: string | null;
   location: string | null;
   status: string;
+  leadStatus: string;
   notes: string | null;
   companyId: number | null;
   companyName: string | null;
   createdAt: string;
 };
+
+export type List = { id: number; name: string; contactCount: number };
 
 export type Company = {
   id: number;

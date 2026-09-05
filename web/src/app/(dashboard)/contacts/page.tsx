@@ -8,10 +8,9 @@ import {
   tableFeatures,
   useTable,
 } from "@tanstack/react-table";
-import { apiFetch, Contact, Company } from "@/lib/api";
+import { apiFetch, Contact, Company, List } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +41,7 @@ const columns = helper.columns([
   helper.accessor("email", { header: "Email" }),
   helper.accessor("companyName", { header: "Company" }),
   helper.accessor("location", { header: "Location" }),
-  helper.accessor("status", { header: "Status" }),
+  helper.accessor("leadStatus", { header: "Lead Status" }),
 ]);
 
 function useDebounced<T>(value: T, delay = 350) {
@@ -58,22 +57,31 @@ export default function ContactsPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [listId, setListId] = useState<string>("");
+  const [leadStatus, setLeadStatus] = useState<string>("");
   const debouncedSearch = useDebounced(search);
   const limit = 50;
 
-  useEffect(() => setPage(1), [debouncedSearch]);
+  useEffect(() => setPage(1), [debouncedSearch, listId, leadStatus]);
 
   const { data, isFetching } = useQuery({
-    queryKey: ["contacts", page, debouncedSearch],
+    queryKey: ["contacts", page, debouncedSearch, listId, leadStatus],
     queryFn: () =>
       apiFetch<{ data: Contact[]; total: number; totalPages: number }>(
-        `/api/contacts?page=${page}&limit=${limit}&search=${encodeURIComponent(debouncedSearch)}`
+        `/api/contacts?page=${page}&limit=${limit}&search=${encodeURIComponent(debouncedSearch)}` +
+          (listId ? `&listId=${listId}` : "") +
+          (leadStatus ? `&leadStatus=${leadStatus}` : "")
       ),
   });
 
   const { data: companies } = useQuery({
     queryKey: ["companies"],
     queryFn: () => apiFetch<Company[]>("/api/companies"),
+  });
+
+  const { data: lists } = useQuery({
+    queryKey: ["lists"],
+    queryFn: () => apiFetch<List[]>("/api/lists"),
   });
 
   const table = useTable({ features, columns, data: data?.data ?? EMPTY });
@@ -106,18 +114,43 @@ export default function ContactsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <ImportDialog />
+          <ImportDialog lists={lists ?? []} />
           <AddContactDialog companies={companies ?? []} />
         </div>
       </div>
 
-      <div className="mb-3.5">
+      <div className="mb-3.5 flex flex-wrap gap-2">
         <Input
           placeholder="Search name, phone, email, company..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
+        <Select value={listId || "all"} onValueChange={(v) => setListId(v === "all" || !v ? "" : v)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="All Lists" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Lists</SelectItem>
+            {lists?.map((l) => (
+              <SelectItem key={l.id} value={String(l.id)}>
+                {l.name} ({l.contactCount})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={leadStatus || "all"} onValueChange={(v) => setLeadStatus(v === "all" || !v ? "" : v)}>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="Lead Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="Cold">Cold</SelectItem>
+            <SelectItem value="Warm">Warm</SelectItem>
+            <SelectItem value="Hot">Hot</SelectItem>
+            <SelectItem value="Customer">Customer</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-card">
@@ -166,8 +199,8 @@ export default function ContactsPage() {
                 >
                   {row.getAllCells().map((cell) => (
                     <div key={cell.id} className="truncate pr-2">
-                      {cell.column.id === "status" ? (
-                        <Badge variant="secondary">{contact.status}</Badge>
+                      {cell.column.id === "leadStatus" ? (
+                        <LeadStatusBadge status={contact.leadStatus} />
                       ) : (
                         <table.FlexRender cell={cell} />
                       )}
@@ -214,6 +247,20 @@ export default function ContactsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function LeadStatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    Hot: "bg-red-950 text-red-400",
+    Warm: "bg-amber-950 text-amber-400",
+    Cold: "bg-secondary text-muted-foreground",
+    Customer: "bg-green-950 text-green-400",
+  };
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${map[status] ?? map.Cold}`}>
+      {status}
+    </span>
   );
 }
 
@@ -314,11 +361,23 @@ type ImportJob = {
   skippedCount: number;
 };
 
-function ImportDialog() {
+function ImportDialog({ lists }: { lists: List[] }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [jobId, setJobId] = useState<number | null>(null);
+  const [destListId, setDestListId] = useState<string>("");
+  const [newListName, setNewListName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const createListMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiFetch<{ id: number }>("/api/lists", { method: "POST", body: JSON.stringify({ name }) }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      setDestListId(String(data.id));
+      setNewListName("");
+    },
+  });
 
   const { data: job } = useQuery({
     queryKey: ["import-job", jobId],
@@ -345,6 +404,7 @@ function ImportDialog() {
     mutationFn: async (file: File) => {
       const fd = new FormData();
       fd.append("file", file);
+      if (destListId) fd.append("listId", destListId);
       const res = await fetch("/api/contacts/import", { method: "POST", body: fd });
       if (!res.ok) throw new Error("Upload failed");
       return res.json() as Promise<{ jobId: number }>;
@@ -369,8 +429,40 @@ function ImportDialog() {
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               We recognize columns like Name/First Name/Last Name, Email, Phone,
-              Company, Website, Job Title, and Location automatically.
+              Company, Website, Job Title, and Location automatically — including
+              messy real-world headers like &quot;Most probable work email&quot;.
             </p>
+            <div className="space-y-1.5">
+              <Label>Destination list (optional)</Label>
+              <Select value={destListId || "none"} onValueChange={(v) => setDestListId(v === "none" || !v ? "" : v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="No list" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No list</SelectItem>
+                  {lists.map((l) => (
+                    <SelectItem key={l.id} value={String(l.id)}>
+                      {l.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex gap-2 pt-1">
+                <Input
+                  placeholder="Or create a new list..."
+                  value={newListName}
+                  onChange={(e) => setNewListName(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!newListName.trim() || createListMutation.isPending}
+                  onClick={() => createListMutation.mutate(newListName.trim())}
+                >
+                  Create
+                </Button>
+              </div>
+            </div>
             <input
               ref={fileInputRef}
               type="file"

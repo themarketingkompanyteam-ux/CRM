@@ -5,14 +5,15 @@ import { eq, sql } from "drizzle-orm";
 import { redisConnection } from "@/queue/connection";
 import type { ImportJobData } from "@/queue/import-queue";
 import { db } from "@/db";
-import { contacts, companies, importJobs } from "@/db/schema";
-import { detectColumnMapping, extractRow } from "@/lib/csv-mapping";
+import { contacts, companies, importJobs, listMemberships, activities } from "@/db/schema";
+import { detectColumnMapping, extractRow, ColumnMapping } from "@/lib/csv-mapping";
+import { predictNameFromEmail, predictCompanyFromEmail } from "@/lib/name-prediction";
 
 const BATCH_SIZE = 200;
 const PROGRESS_UPDATE_EVERY = 200;
 
 async function processImportJob(data: ImportJobData) {
-  const { jobId, filePath } = data;
+  const { jobId, filePath, listId } = data;
 
   await db
     .update(importJobs)
@@ -34,7 +35,7 @@ async function processImportJob(data: ImportJobData) {
   let processedRows = 0;
   const errors: string[] = [];
 
-  let mapping: Record<string, string> | null = null;
+  let mapping: ColumnMapping | null = null;
   let batch: ReturnType<typeof extractRow>[] = [];
 
   async function flushBatch() {
@@ -43,6 +44,20 @@ async function processImportJob(data: ImportJobData) {
       if (!row.phone && !row.email) {
         skippedCount++;
         continue;
+      }
+
+      let nameGuessed = false;
+      if (row.firstName === "Unknown" && row.email) {
+        const guess = predictNameFromEmail(row.email);
+        if (guess) {
+          row.firstName = guess.firstName;
+          row.lastName = row.lastName || guess.lastName;
+          nameGuessed = true;
+        }
+      }
+      if (!row.company && row.email) {
+        const guessedCompany = predictCompanyFromEmail(row.email);
+        if (guessedCompany) row.company = guessedCompany;
       }
 
       let companyId: number | null = null;
@@ -89,7 +104,10 @@ async function processImportJob(data: ImportJobData) {
               .limit(1)
           : [];
 
+      let contactId: number;
+
       if (existingMatch[0]) {
+        contactId = existingMatch[0].id;
         await db
           .update(contacts)
           .set({
@@ -103,20 +121,37 @@ async function processImportJob(data: ImportJobData) {
             companyId: companyId ?? undefined,
             updatedAt: new Date(),
           })
-          .where(eq(contacts.id, existingMatch[0].id));
+          .where(eq(contacts.id, contactId));
         updatedCount++;
       } else {
-        await db.insert(contacts).values({
-          firstName: row.firstName,
-          lastName: row.lastName,
-          email: row.email || null,
-          phone: row.phone || null,
-          jobTitle: row.jobTitle || null,
-          website: row.website || null,
-          location: row.location || null,
-          companyId,
-        });
+        const [newContact] = await db
+          .insert(contacts)
+          .values({
+            firstName: row.firstName,
+            lastName: row.lastName,
+            email: row.email || null,
+            phone: row.phone || null,
+            jobTitle: row.jobTitle || null,
+            website: row.website || null,
+            location: row.location || null,
+            companyId,
+            nameGuessed: nameGuessed ? 1 : 0,
+          })
+          .returning({ id: contacts.id });
+        contactId = newContact.id;
         createdCount++;
+        await db.insert(activities).values({
+          contactId,
+          type: "imported",
+          body: nameGuessed ? "Contact imported (name guessed from email)" : "Contact imported",
+        });
+      }
+
+      if (listId) {
+        await db
+          .insert(listMemberships)
+          .values({ listId, contactId })
+          .onConflictDoNothing();
       }
     }
     batch = [];

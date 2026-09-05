@@ -13,6 +13,8 @@ const UPLOAD_DIR = path.join(process.cwd(), "data", "uploads");
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file") as File | null;
+  const listIdRaw = formData.get("listId");
+  const listId = listIdRaw ? Number(listIdRaw) : null;
 
   if (!file) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -43,7 +45,7 @@ export async function POST(request: NextRequest) {
     })
     .returning();
 
-  await importQueue.add("import", { jobId: job.id, filePath });
+  await importQueue.add("import", { jobId: job.id, filePath, listId });
 
   return NextResponse.json({ jobId: job.id, totalRows, mapping });
 }

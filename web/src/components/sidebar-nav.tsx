@@ -9,7 +9,9 @@ const items = [
   { href: "/", label: "Dashboard", icon: "🏠" },
   { href: "/contacts", label: "Contacts", icon: "👤" },
   { href: "/companies", label: "Companies", icon: "🏢" },
+  { href: "/prospecting", label: "Prospecting", icon: "📞" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
+  { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
 export function SidebarNav({ username }: { username: string }) {

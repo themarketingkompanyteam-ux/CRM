@@ -6,6 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const STAGES = ["New", "Qualified", "Proposal", "Negotiation", "Won", "Lost"];
 
+type HotLead = { id: number; name: string; companyName: string | null; lastOutcome: string | null };
+
 function fmtMoney(n: number) {
   return "$" + Math.round(n).toLocaleString();
 }
@@ -14,6 +16,12 @@ export default function DashboardPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => apiFetch<DashboardStats>("/api/dashboard"),
+    refetchInterval: 15000,
+  });
+
+  const { data: hotLeads } = useQuery({
+    queryKey: ["hot-leads"],
+    queryFn: () => apiFetch<HotLead[]>("/api/prospecting/hot"),
     refetchInterval: 15000,
   });
 
@@ -55,31 +63,53 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">📊 Pipeline by Stage</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2.5">
-          {STAGES.map((stage) => {
-            const info = data?.by_stage[stage] ?? { count: 0, value: 0 };
-            const pct = (info.value / maxVal) * 100;
-            return (
-              <div key={stage} className="flex items-center gap-2.5 text-sm">
-                <div className="w-28 shrink-0 text-muted-foreground">{stage}</div>
-                <div className="h-2 flex-1 overflow-hidden rounded bg-secondary">
-                  <div
-                    className="h-full rounded bg-primary"
-                    style={{ width: `${pct}%` }}
-                  />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">📊 Pipeline by Stage</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2.5">
+            {STAGES.map((stage) => {
+              const info = data?.by_stage[stage] ?? { count: 0, value: 0 };
+              const pct = (info.value / maxVal) * 100;
+              return (
+                <div key={stage} className="flex items-center gap-2.5 text-sm">
+                  <div className="w-28 shrink-0 text-muted-foreground">{stage}</div>
+                  <div className="h-2 flex-1 overflow-hidden rounded bg-secondary">
+                    <div
+                      className="h-full rounded bg-primary"
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <div className="w-32 shrink-0 text-right">
+                    {fmtMoney(info.value)} ({info.count})
+                  </div>
                 </div>
-                <div className="w-32 shrink-0 text-right">
-                  {fmtMoney(info.value)} ({info.count})
-                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">🔥 Hot Leads</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(!hotLeads || hotLeads.length === 0) && (
+              <p className="text-sm text-muted-foreground">No hot leads yet — mark some during Prospecting calls.</p>
+            )}
+            {hotLeads?.map((lead) => (
+              <div key={lead.id} className="rounded-lg border p-3">
+                <div className="text-sm font-semibold">{lead.name}</div>
+                <div className="text-xs text-muted-foreground">{lead.companyName || "—"}</div>
+                {lead.lastOutcome && (
+                  <div className="mt-1 text-xs text-primary">{lead.lastOutcome}</div>
+                )}
               </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

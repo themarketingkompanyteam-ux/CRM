@@ -46,6 +46,11 @@ export const contacts = pgTable(
     website: text("website"),
     location: text("location"),
     status: varchar("status", { length: 30 }).default("New").notNull(),
+    leadStatus: varchar("lead_status", { length: 20 }).default("Cold").notNull(),
+    nameGuessed: integer("name_guessed").default(0).notNull(),
+    callAttempts: integer("call_attempts").default(0).notNull(),
+    lastCalledAt: timestamp("last_called_at"),
+    nextFollowUpAt: timestamp("next_follow_up_at"),
     tags: text("tags"),
     notes: text("notes"),
     companyId: integer("company_id").references(() => companies.id, {
@@ -59,8 +64,84 @@ export const contacts = pgTable(
     index("contacts_phone_idx").on(table.phone),
     index("contacts_company_idx").on(table.companyId),
     index("contacts_name_idx").on(table.firstName, table.lastName),
+    index("contacts_lead_status_idx").on(table.leadStatus),
   ]
 );
+
+export const lists = pgTable("lists", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const listMemberships = pgTable(
+  "list_memberships",
+  {
+    id: serial("id").primaryKey(),
+    listId: integer("list_id")
+      .notNull()
+      .references(() => lists.id, { onDelete: "cascade" }),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("list_memberships_unique").on(table.listId, table.contactId),
+    index("list_memberships_contact_idx").on(table.contactId),
+  ]
+);
+
+export const CALL_OUTCOMES = [
+  "No Answer",
+  "Voicemail",
+  "Call Back Later",
+  "Interested",
+  "Booked Call",
+  "Not Interested",
+  "Wrong Number",
+  "Requested Information",
+  "Other",
+] as const;
+
+export const calls = pgTable(
+  "calls",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    outcome: varchar("outcome", { length: 40 }),
+    leadTemperature: varchar("lead_temperature", { length: 20 }),
+    notes: text("notes"),
+    durationSeconds: integer("duration_seconds").default(0),
+    callbackAt: timestamp("callback_at"),
+    twilioCallSid: text("twilio_call_sid"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("calls_contact_idx").on(table.contactId)]
+);
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id").references(() => contacts.id, {
+      onDelete: "cascade",
+    }),
+    title: text("title").notNull(),
+    dueAt: timestamp("due_at"),
+    completed: integer("completed").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("tasks_contact_idx").on(table.contactId)]
+);
+
+export const settings = pgTable("settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: jsonb("value").$type<Record<string, unknown>>(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
 
 export const deals = pgTable(
   "deals",
@@ -113,7 +194,7 @@ export const importJobs = pgTable("import_jobs", {
   companiesCreatedCount: integer("companies_created_count").default(0),
   skippedCount: integer("skipped_count").default(0),
   errors: jsonb("errors").$type<string[]>().default([]),
-  columnMapping: jsonb("column_mapping").$type<Record<string, string>>(),
+  columnMapping: jsonb("column_mapping").$type<Record<string, string | string[]>>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
 });
