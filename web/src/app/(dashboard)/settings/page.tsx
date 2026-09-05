@@ -264,6 +264,106 @@ function GrowthIntelligenceSection() {
   );
 }
 
+type InstantlyStatus = {
+  connected: boolean;
+  apiKeyConfigured: boolean;
+  apiVersion: string;
+  lastTestedAt: string | null;
+  lastSyncedAt: string | null;
+  accountCount: number;
+  campaignCount: number;
+};
+
+function InstantlySection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["instantly-status"],
+    queryFn: () => apiFetch<InstantlyStatus>("/api/integrations/instantly/status"),
+  });
+
+  const testMutation = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; message: string }>("/api/integrations/instantly/test", { method: "POST" }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["instantly-status"] });
+      if (result.ok) toast.success(result.message);
+      else toast.error(result.message);
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ accountsSynced: number; campaignsFound: number; campaignsImported: number }>(
+        "/api/integrations/instantly/sync",
+        { method: "POST" }
+      ),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["instantly-status"] });
+      toast.success(
+        `Synced ${result.accountsSynced} sending account(s), found ${result.campaignsFound} campaign(s), imported ${result.campaignsImported} new`
+      );
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Card className="mt-6 max-w-4xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          📧 Instantly (Email Outreach)
+          {data?.connected && (
+            <span className="rounded-full bg-green-950 px-2 py-0.5 text-[11px] font-semibold text-green-400">
+              Connected
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        {!data?.apiKeyConfigured && (
+          <p className="text-muted-foreground">
+            INSTANTLY_API_KEY is not set. Add it to .env.local, restart the server, then Test Connection here.
+          </p>
+        )}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border p-3">
+            <div className="text-xs text-muted-foreground">API Version</div>
+            <div className="font-bold">{data?.apiVersion ?? "v2"}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs text-muted-foreground">Sending Accounts</div>
+            <div className="font-bold">{data?.accountCount ?? 0}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs text-muted-foreground">Campaigns</div>
+            <div className="font-bold">{data?.campaignCount ?? 0}</div>
+          </div>
+          <div className="rounded-lg border p-3">
+            <div className="text-xs text-muted-foreground">Last synced</div>
+            <div className="font-bold">{data?.lastSyncedAt ? new Date(data.lastSyncedAt).toLocaleString() : "Never"}</div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={testMutation.isPending} onClick={() => testMutation.mutate()}>
+            Test Connection
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!data?.connected || syncMutation.isPending}
+            onClick={() => syncMutation.mutate()}
+          >
+            Refresh Accounts &amp; Campaigns
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Instantly remains the actual sending provider — the CRM only selects audiences, builds
+          sequences, and reads results back. Sending-account rotation and delivery limits are
+          managed by Instantly itself.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -386,6 +486,7 @@ export default function SettingsPage() {
 
       <EnrichmentProvidersSection />
       <GrowthIntelligenceSection />
+      <InstantlySection />
     </div>
   );
 }

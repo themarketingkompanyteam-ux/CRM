@@ -10,6 +10,7 @@ export const PROMPT_VERSIONS = {
   salesBrief: "1.0",
   outreach: "1.0",
   callScript: "1.0",
+  emailSequence: "1.0",
 } as const;
 
 const NO_FABRICATION_RULE = `
@@ -226,6 +227,46 @@ Research: ${JSON.stringify(research)}
 Sales brief: ${JSON.stringify(salesBrief)}
 
 Write: a cold email (subject+body), a follow-up email (subject+body) assuming no response to the first, a short LinkedIn connection/message, a short SMS, and a short WhatsApp message. All grounded in the evidence above — reference the specific opportunity/observation, not generic claims.`;
+  return { system, user };
+}
+
+export const EMAIL_SEQUENCE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    subjectLines: { type: "ARRAY", items: { type: "STRING" } },
+    initialEmail: { type: "STRING" },
+    followUp1: { type: "STRING" },
+    followUp2: { type: "STRING" },
+  },
+  required: ["subjectLines", "initialEmail", "followUp1", "followUp2"],
+};
+
+/**
+ * Campaign-level sequence generation. Unlike buildOutreachPrompt (single ad-hoc
+ * message for a specific contact record), this generates a template sequence with
+ * {{variables}} for personalization across many leads, used by /email-campaigns.
+ */
+export function buildEmailSequencePrompt(input: {
+  audienceDescription: string;
+  research?: unknown;
+  opportunities?: unknown;
+  salesBrief?: unknown;
+}) {
+  const hasGrowthIntelligenceData = !!(input.research || input.opportunities || input.salesBrief);
+  const system = `You write cold email outreach sequences for a marketing agency's sales team, to be sent to many leads using personalization variables like {{firstName}}, {{lastName}}, {{companyName}}, {{jobTitle}}, {{website}}.
+${
+  hasGrowthIntelligenceData
+    ? "You are also given real research/opportunity/sales-brief data for a representative example lead in this audience — use it only to decide what KIND of angle and observation to reference in the template (e.g. \"I noticed {{companyName}}'s website...\"), never insert facts specific to that one example lead as if they applied to every recipient."
+    : "No lead-specific research is available for this audience — write a generic but professional, non-pushy cold outreach template using only the personalization variables listed above."
+}
+Never claim familiarity that doesn't exist (e.g. "we've spoken before", "you downloaded our guide") unless a variable explicitly represents that fact. Never fabricate statistics, review counts, or specific business events.
+${NO_FABRICATION_RULE}`;
+  const user = `Audience: ${input.audienceDescription}
+${input.research ? `Representative research example: ${JSON.stringify(input.research)}` : ""}
+${input.opportunities ? `Representative opportunities example: ${JSON.stringify(input.opportunities)}` : ""}
+${input.salesBrief ? `Representative sales brief example: ${JSON.stringify(input.salesBrief)}` : ""}
+
+Generate: 3 subject line options (as subjectLines), an initial cold email body (initialEmail), a follow-up #1 body sent a few days later assuming no reply (followUp1), and a final follow-up #2 body (followUp2). Use {{firstName}}, {{companyName}}, etc. for personalization. Keep each email under 120 words, plain text (no markdown), professional and concise.`;
   return { system, user };
 }
 

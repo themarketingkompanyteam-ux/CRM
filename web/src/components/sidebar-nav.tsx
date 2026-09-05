@@ -14,6 +14,7 @@ const items = [
   { href: "/leads", label: "Leads", icon: "🔥" },
   { href: "/enrichment", label: "Enrichment", icon: "🔌" },
   { href: "/growth-intelligence", label: "Growth Intelligence", icon: "🧠" },
+  { href: "/email-campaigns", label: "Email Campaigns", icon: "📧" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];

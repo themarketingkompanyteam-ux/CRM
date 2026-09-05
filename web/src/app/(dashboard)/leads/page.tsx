@@ -21,6 +21,7 @@ import {
 import { CallDialog, CallLead } from "@/components/call-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type Lead = {
   id: number;
@@ -64,6 +65,7 @@ function fmtDate(iso: string | null) {
 
 export default function LeadsPage() {
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [bucket, setBucket] = useState("Hot");
   const [activeLead, setActiveLead] = useState<CallLead | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -168,6 +170,13 @@ export default function LeadsPage() {
           </Button>
           <Button size="sm" variant="outline" onClick={() => analyzeMutation.mutate([...selected])}>
             Analyze Selected with AI
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => router.push(`/email-campaigns/new?contactIds=${[...selected].join(",")}`)}
+          >
+            📧 Add to Email Campaign
           </Button>
         </div>
       )}

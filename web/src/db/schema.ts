@@ -76,6 +76,11 @@ export const contacts = pgTable(
     aiExpiresAt: timestamp("ai_expires_at"),
     aiPushedToProspecting: integer("ai_pushed_to_prospecting").default(0).notNull(),
     aiLastError: text("ai_last_error"),
+    // Email outreach (Instantly) suppression state
+    emailStatus: varchar("email_status", { length: 20 }).default("none").notNull(),
+    emailUnsubscribed: integer("email_unsubscribed").default(0).notNull(),
+    emailBounced: integer("email_bounced").default(0).notNull(),
+    doNotContact: integer("do_not_contact").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -531,3 +536,92 @@ export const aiUsageLog = pgTable(
     index("ai_usage_log_created_idx").on(table.createdAt),
   ]
 );
+
+// ---------- Email Campaigns (Instantly.ai outreach layer) ----------
+
+/** Suppression / deliverability state — checked before any push to Instantly. */
+export const EMAIL_STATUSES = ["none", "sent", "bounced", "unsubscribed", "replied", "suppressed"] as const;
+
+export const EMAIL_CAMPAIGN_STATUSES = ["draft", "active", "paused", "completed", "error"] as const;
+
+export const emailCampaigns = pgTable(
+  "email_campaigns",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    status: varchar("status", { length: 20 }).default("draft").notNull(),
+    instantlyCampaignId: varchar("instantly_campaign_id", { length: 60 }),
+    audienceFilter: jsonb("audience_filter").$type<Record<string, unknown>>().default({}),
+    personalizationMode: varchar("personalization_mode", { length: 30 }).default("standard").notNull(),
+    dailyLimit: integer("daily_limit").default(50),
+    stopOnReply: integer("stop_on_reply").default(1).notNull(),
+    openTracking: integer("open_tracking").default(1).notNull(),
+    linkTracking: integer("link_tracking").default(1).notNull(),
+    scheduleDays: jsonb("schedule_days").$type<number[]>().default([1, 2, 3, 4, 5]),
+    scheduleFrom: varchar("schedule_from", { length: 5 }).default("09:00"),
+    scheduleTo: varchar("schedule_to", { length: 5 }).default("17:00"),
+    timezone: varchar("timezone", { length: 60 }).default("Etc/UTC"),
+    sendingAccountEmails: jsonb("sending_account_emails").$type<string[]>().default([]),
+    lastError: text("last_error"),
+    launchedAt: timestamp("launched_at"),
+    lastSyncedAt: timestamp("last_synced_at"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("email_campaigns_status_idx").on(table.status),
+    uniqueIndex("email_campaigns_instantly_id_idx").on(table.instantlyCampaignId),
+  ]
+);
+
+export const emailCampaignSteps = pgTable(
+  "email_campaign_steps",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id")
+      .notNull()
+      .references(() => emailCampaigns.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    delayDays: integer("delay_days").default(2).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("email_campaign_steps_campaign_idx").on(table.campaignId)]
+);
+
+/** Maps a CRM contact into a campaign and tracks the Instantly-side lead + its status. */
+export const emailCampaignLeads = pgTable(
+  "email_campaign_leads",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id")
+      .notNull()
+      .references(() => emailCampaigns.id, { onDelete: "cascade" }),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    instantlyLeadId: varchar("instantly_lead_id", { length: 60 }),
+    status: varchar("status", { length: 20 }).default("pending").notNull(), // pending/added/sent/opened/clicked/replied/bounced/unsubscribed/failed
+    lastEventAt: timestamp("last_event_at"),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("email_campaign_leads_unique").on(table.campaignId, table.contactId),
+    index("email_campaign_leads_contact_idx").on(table.contactId),
+    index("email_campaign_leads_instantly_idx").on(table.instantlyLeadId),
+  ]
+);
+
+/** Read-only local cache of Instantly sending accounts, refreshed on demand. */
+export const emailSendingAccounts = pgTable("email_sending_accounts", {
+  email: varchar("email", { length: 255 }).primaryKey(),
+  status: integer("status"),
+  statusLabel: varchar("status_label", { length: 30 }),
+  warmupStatus: integer("warmup_status"),
+  dailyLimit: integer("daily_limit"),
+  tags: jsonb("tags").$type<string[]>().default([]),
+  syncedAt: timestamp("synced_at").defaultNow().notNull(),
+});
