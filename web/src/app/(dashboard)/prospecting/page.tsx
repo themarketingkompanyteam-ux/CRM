@@ -107,19 +107,30 @@ export default function ProspectingPage() {
 
   async function saveAndNext() {
     if (!activeLead || !outcome) return;
-    await saveCallMutation.mutateAsync({
-      contactId: activeLead.id,
-      outcome,
-      leadTemperature: temperature,
-      notes,
-      durationSeconds: duration,
+    try {
+      await saveCallMutation.mutateAsync({
+        contactId: activeLead.id,
+        outcome,
+        leadTemperature: temperature,
+        notes,
+        durationSeconds: duration,
+      });
+    } catch (err) {
+      toast.error(
+        `Failed to save call: ${err instanceof Error ? err.message : "Unknown error"}`
+      );
+      return;
+    }
+
+    const freshQueue = await queryClient.fetchQuery({
+      queryKey: ["prospecting-queue"],
+      queryFn: () => apiFetch<QueueLead[]>("/api/prospecting/queue"),
     });
-    queryClient.invalidateQueries({ queryKey: ["prospecting-queue"] });
     queryClient.invalidateQueries({ queryKey: ["prospecting-stats"] });
     queryClient.invalidateQueries({ queryKey: ["contacts"] });
     queryClient.invalidateQueries({ queryKey: ["dashboard"] });
 
-    const remaining = (queue ?? []).filter((l) => l.id !== activeLead.id);
+    const remaining = freshQueue.filter((l) => l.id !== activeLead.id);
     if (remaining.length > 0) {
       toast.success(`Saved. Calling ${remaining[0].firstName} next...`);
       startCallWith(remaining[0]);

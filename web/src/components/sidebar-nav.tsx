@@ -10,6 +10,8 @@ const items = [
   { href: "/contacts", label: "Contacts", icon: "👤" },
   { href: "/companies", label: "Companies", icon: "🏢" },
   { href: "/prospecting", label: "Prospecting", icon: "📞" },
+  { href: "/calls", label: "Call History", icon: "📋" },
+  { href: "/leads", label: "Leads", icon: "🔥" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
