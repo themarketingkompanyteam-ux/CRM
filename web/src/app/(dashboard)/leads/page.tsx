@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { CallDialog, CallLead } from "@/components/call-dialog";
 import { toast } from "sonner";
+import Link from "next/link";
 
 type Lead = {
   id: number;
@@ -38,6 +39,8 @@ type Lead = {
   enrichmentProvider: string | null;
   extraEmails: { email: string; provider: string | null }[];
   extraPhones: { phone: string; provider: string | null }[];
+  aiStatus?: string;
+  aiOpportunityScore?: number | null;
 };
 
 type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
@@ -123,6 +126,19 @@ export default function LeadsPage() {
     },
   });
 
+  const analyzeMutation = useMutation({
+    mutationFn: (contactIds: number[]) =>
+      apiFetch<{ queued: number; deferredByDailyLimit: number }>("/api/growth-intelligence/analyze", {
+        method: "POST",
+        body: JSON.stringify({ contactIds }),
+      }),
+    onSuccess: (data) => {
+      toast.success(`Analyzing ${data.queued} lead(s) with AI${data.deferredByDailyLimit ? ` (${data.deferredByDailyLimit} deferred by daily limit)` : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      setSelected(new Set());
+    },
+  });
+
   function toggle(id: number) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -149,6 +165,9 @@ export default function LeadsPage() {
           <span>{selected.size} selected</span>
           <Button size="sm" variant="outline" onClick={() => pushToQueueMutation.mutate([...selected])}>
             Push to Enrichment
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => analyzeMutation.mutate([...selected])}>
+            Analyze Selected with AI
           </Button>
         </div>
       )}
@@ -211,6 +230,19 @@ export default function LeadsPage() {
                       Enriched via {lead.enrichmentProvider} · {lead.enrichmentConfidence}% confidence
                     </div>
                   )}
+                  {lead.aiStatus && lead.aiStatus !== "NOT_ANALYZED" && (
+                    <div className="mb-2 text-[11px]">
+                      {lead.aiStatus === "COMPLETED" ? (
+                        <Link href={`/growth-intelligence/${lead.id}`} className="text-primary underline">
+                          🧠 AI Score {lead.aiOpportunityScore}/100 — View Analysis
+                        </Link>
+                      ) : lead.aiStatus === "FAILED" ? (
+                        <span className="text-red-400">🧠 AI analysis failed</span>
+                      ) : (
+                        <span className="text-muted-foreground">🧠 AI: {lead.aiStatus}</span>
+                      )}
+                    </div>
+                  )}
                   {lead.lastOutcome && (
                     <div className="mb-1 text-xs text-primary">Last outcome: {lead.lastOutcome}</div>
                   )}
@@ -256,6 +288,16 @@ export default function LeadsPage() {
                     >
                       {enrichingId === lead.id ? "Enriching..." : "Enrich"}
                     </Button>
+                    {bucket === "Hot" && (!lead.aiStatus || lead.aiStatus === "NOT_ANALYZED" || lead.aiStatus === "FAILED") && (
+                      <Button
+                        variant="outline"
+                        disabled={analyzeMutation.isPending}
+                        onClick={() => analyzeMutation.mutate([lead.id])}
+                        title="Run Gemini research, opportunity detection, scoring, and sales brief"
+                      >
+                        🧠 Analyze
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}

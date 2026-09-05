@@ -133,6 +133,137 @@ function EnrichmentProvidersSection() {
   );
 }
 
+type GiSettings = {
+  autoAnalyzeHot: boolean;
+  autoAnalyzeWarm: boolean;
+  autoEnrichHot: boolean;
+  autoGenerateSalesBrief: boolean;
+  autoGenerateOutreach: boolean;
+  autoPushToProspecting: boolean;
+  minOpportunityScore: number;
+  dailyAiLimit: number;
+  refreshDays: number;
+};
+
+function GrowthIntelligenceSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["gi-settings"],
+    queryFn: () => apiFetch<{ settings: GiSettings }>("/api/growth-intelligence/settings"),
+  });
+  const { data: usage } = useQuery({
+    queryKey: ["gi-usage"],
+    queryFn: () => apiFetch<{ totalRequests: number; successCount: number; failedCount: number; totalInputTokens: number; totalOutputTokens: number; usedToday: number; dailyLimit: number }>(
+      "/api/growth-intelligence/usage"
+    ),
+  });
+
+  const testMutation = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; message: string; model: string }>("/api/growth-intelligence/test", { method: "POST" }),
+    onSuccess: (data) => (data.ok ? toast.success(`Gemini connected (${data.model})`) : toast.error(data.message)),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (settings: Partial<GiSettings>) =>
+      apiFetch("/api/growth-intelligence/settings", { method: "POST", body: JSON.stringify({ settings }) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gi-settings"] }),
+  });
+
+  const s = data?.settings;
+
+  function Toggle({ label, field }: { label: string; field: keyof GiSettings }) {
+    return (
+      <label className="flex items-center justify-between gap-3 py-1.5 text-sm">
+        <span>{label}</span>
+        <input
+          type="checkbox"
+          checked={!!s?.[field]}
+          onChange={(e) => saveMutation.mutate({ [field]: e.target.checked })}
+        />
+      </label>
+    );
+  }
+
+  return (
+    <Card className="mt-6 max-w-4xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          🧠 Growth Intelligence (Gemini AI)
+          <Button size="sm" variant="outline" disabled={testMutation.isPending} onClick={() => testMutation.mutate()}>
+            Test Connection
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {usage && (
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border p-3 text-sm">
+              <div className="text-xs text-muted-foreground">Today's usage</div>
+              <div className="font-bold">{usage.usedToday} / {usage.dailyLimit}</div>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <div className="text-xs text-muted-foreground">Total requests</div>
+              <div className="font-bold">{usage.totalRequests}</div>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <div className="text-xs text-muted-foreground">Success / Failed</div>
+              <div className="font-bold">{usage.successCount} / {usage.failedCount}</div>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <div className="text-xs text-muted-foreground">Tokens (in/out)</div>
+              <div className="font-bold">{usage.totalInputTokens} / {usage.totalOutputTokens}</div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
+          <div>
+            <Toggle label="Auto-analyze HOT leads" field="autoAnalyzeHot" />
+            <Toggle label="Auto-analyze WARM leads" field="autoAnalyzeWarm" />
+            <Toggle label="Auto-enrich HOT leads first" field="autoEnrichHot" />
+          </div>
+          <div>
+            <Toggle label="Auto-generate sales brief" field="autoGenerateSalesBrief" />
+            <Toggle label="Auto-generate outreach" field="autoGenerateOutreach" />
+            <Toggle label="Auto-push qualified leads to Prospecting" field="autoPushToProspecting" />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Minimum opportunity score</Label>
+            <Input
+              type="number"
+              defaultValue={s?.minOpportunityScore}
+              onBlur={(e) => saveMutation.mutate({ minOpportunityScore: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Daily AI analysis limit</Label>
+            <Input
+              type="number"
+              defaultValue={s?.dailyAiLimit}
+              onBlur={(e) => saveMutation.mutate({ dailyAiLimit: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Research refresh period (days)</Label>
+            <Input
+              type="number"
+              defaultValue={s?.refreshDays}
+              onBlur={(e) => saveMutation.mutate({ refreshDays: Number(e.target.value) })}
+            />
+          </div>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          AI only runs for HOT leads (by default), leads you explicitly select, or leads you push
+          to Growth Intelligence — never automatically for every contact in the CRM.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -254,6 +385,7 @@ export default function SettingsPage() {
       </Card>
 
       <EnrichmentProvidersSection />
+      <GrowthIntelligenceSection />
     </div>
   );
 }

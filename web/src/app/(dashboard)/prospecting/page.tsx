@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CallDialog, CallLead } from "@/components/call-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
 
 type QueueLead = CallLead & {
   email: string | null;
@@ -28,6 +29,20 @@ type EnrichedLead = {
   lastCalledAt: string | null;
 };
 
+type AiPriorityLead = {
+  id: number;
+  firstName: string;
+  lastName: string | null;
+  phone: string | null;
+  email: string | null;
+  companyName: string | null;
+  leadStatus: string;
+  opportunityScore: number | null;
+  primaryOpportunity: string | null;
+  recommendedService: string | null;
+  confidence: number | null;
+};
+
 type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
 
 export default function ProspectingPage() {
@@ -45,6 +60,10 @@ export default function ProspectingPage() {
   const { data: enrichedLeads, isLoading: enrichedLoading } = useQuery({
     queryKey: ["prospecting-enriched"],
     queryFn: () => apiFetch<EnrichedLead[]>("/api/prospecting/enriched"),
+  });
+  const { data: aiPriorityLeads, isLoading: aiPriorityLoading } = useQuery({
+    queryKey: ["ai-priority"],
+    queryFn: () => apiFetch<AiPriorityLead[]>("/api/growth-intelligence/priority"),
   });
 
   const [activeLead, setActiveLead] = useState<CallLead | null>(null);
@@ -86,9 +105,10 @@ export default function ProspectingPage() {
         <TabsList className="mb-5">
           <TabsTrigger value="regular">Regular Leads</TabsTrigger>
           <TabsTrigger value="enriched">Enriched Leads {enrichedLeads ? `(${enrichedLeads.length})` : ""}</TabsTrigger>
+          <TabsTrigger value="ai-priority">🧠 AI Priority {aiPriorityLeads ? `(${aiPriorityLeads.length})` : ""}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="regular">
+        <TabsContent value="regular" className={tab === "regular" ? "" : "hidden"}>
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">TODAY&apos;S CALLS</h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {isLoading && <div className="text-sm text-muted-foreground">Loading queue...</div>}
@@ -116,7 +136,7 @@ export default function ProspectingPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="enriched">
+        <TabsContent value="enriched" className={tab === "enriched" ? "" : "hidden"}>
           <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
             ENRICHED LEADS — pushed from the Enrichment page
           </h2>
@@ -152,6 +172,66 @@ export default function ProspectingPage() {
                 >
                   📞 {lead.phone ? "Start Call" : "No phone"}
                 </Button>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+        <TabsContent value="ai-priority" className={tab === "ai-priority" ? "" : "hidden"}>
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
+            AI PRIORITY — leads scored by Growth Intelligence
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {aiPriorityLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+            {!aiPriorityLoading && (aiPriorityLeads?.length ?? 0) === 0 && (
+              <div className="text-sm text-muted-foreground">
+                No AI-prioritized leads yet — run Growth Intelligence analysis on Hot leads to populate this queue.
+              </div>
+            )}
+            {aiPriorityLeads?.map((lead) => (
+              <div key={lead.id} className="rounded-xl border bg-card p-4">
+                <div className="mb-1 flex items-center justify-between">
+                  <div className="font-semibold">{lead.firstName} {lead.lastName}</div>
+                  <TempBadge status={lead.leadStatus} />
+                </div>
+                <div className="mb-1 text-sm text-muted-foreground">{lead.companyName || "—"}</div>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
+                    Score {lead.opportunityScore ?? "—"}/100
+                  </span>
+                  {lead.confidence !== null && (
+                    <span className="text-xs text-muted-foreground">Confidence: {lead.confidence}%</span>
+                  )}
+                </div>
+                {lead.primaryOpportunity && (
+                  <div className="mb-1 text-sm">
+                    <span className="text-muted-foreground">Opportunity:</span> {lead.primaryOpportunity}
+                  </div>
+                )}
+                {lead.recommendedService && (
+                  <div className="mb-3 text-sm">
+                    <span className="text-muted-foreground">Recommended:</span> {lead.recommendedService}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1 bg-primary text-primary-foreground"
+                    disabled={!lead.phone}
+                    onClick={() =>
+                      setActiveLead({
+                        id: lead.id,
+                        firstName: lead.firstName,
+                        lastName: lead.lastName,
+                        phone: lead.phone,
+                        companyName: lead.companyName,
+                      })
+                    }
+                  >
+                    📞 {lead.phone ? "Start Call" : "No phone"}
+                  </Button>
+                  <Link href={`/growth-intelligence/${lead.id}`}>
+                    <Button variant="outline">View Sales Brief</Button>
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

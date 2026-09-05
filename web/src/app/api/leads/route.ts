@@ -29,12 +29,15 @@ export async function GET(request: NextRequest) {
     enrichment_status: string;
     enrichment_confidence: number | null;
     enrichment_provider: string | null;
+    ai_status: string;
+    ai_opportunity_score: number | null;
     extra_emails: { email: string; provider: string | null }[];
     extra_phones: { phone: string; provider: string | null }[];
   }>(sql`
     SELECT c.id, c.first_name, c.last_name, c.phone, c.email, c.linkedin_url, co.name AS company_name,
       c.lead_status, c.next_follow_up_at,
       c.enrichment_status, c.enrichment_confidence, c.enrichment_provider,
+      c.ai_status, c.ai_opportunity_score,
       (SELECT outcome FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_outcome,
       (SELECT notes FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_notes,
       (SELECT created_at FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_call_at,
@@ -67,6 +70,8 @@ export async function GET(request: NextRequest) {
       enrichmentProvider: r.enrichment_provider,
       extraEmails: r.extra_emails ?? [],
       extraPhones: r.extra_phones ?? [],
+      aiStatus: r.ai_status,
+      aiOpportunityScore: r.ai_opportunity_score,
     }))
   );
 }

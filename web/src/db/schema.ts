@@ -67,6 +67,15 @@ export const contacts = pgTable(
     pushedToProspectingEnriched: integer("pushed_to_prospecting_enriched")
       .default(0)
       .notNull(),
+    // Growth Intelligence (AI) state
+    aiStatus: varchar("ai_status", { length: 30 }).default("NOT_ANALYZED").notNull(),
+    aiOpportunityScore: integer("ai_opportunity_score"),
+    aiPrimaryOpportunity: text("ai_primary_opportunity"),
+    aiRecommendedService: text("ai_recommended_service"),
+    aiAnalyzedAt: timestamp("ai_analyzed_at"),
+    aiExpiresAt: timestamp("ai_expires_at"),
+    aiPushedToProspecting: integer("ai_pushed_to_prospecting").default(0).notNull(),
+    aiLastError: text("ai_last_error"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -77,6 +86,8 @@ export const contacts = pgTable(
     index("contacts_name_idx").on(table.firstName, table.lastName),
     index("contacts_lead_status_idx").on(table.leadStatus),
     index("contacts_enrichment_status_idx").on(table.enrichmentStatus),
+    index("contacts_ai_status_idx").on(table.aiStatus),
+    index("contacts_ai_score_idx").on(table.aiOpportunityScore),
   ]
 );
 
@@ -360,3 +371,163 @@ export const importJobs = pgTable("import_jobs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   finishedAt: timestamp("finished_at"),
 });
+
+// ---------- Growth Intelligence (Gemini AI layer) ----------
+
+export const AI_STATUSES = [
+  "NOT_ANALYZED",
+  "QUEUED",
+  "RESEARCHING",
+  "ANALYZING",
+  "OPPORTUNITIES_FOUND",
+  "SCORED",
+  "SALES_READY",
+  "COMPLETED",
+  "FAILED",
+  "NEEDS_REVIEW",
+] as const;
+
+/** Structured company research, cached and reused across later AI stages. */
+export const aiResearch = pgTable("ai_research", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "cascade" })
+    .unique(),
+  companySummary: text("company_summary"),
+  industry: text("industry"),
+  services: jsonb("services").$type<string[]>().default([]),
+  locations: jsonb("locations").$type<string[]>().default([]),
+  website: text("website"),
+  socialProfiles: jsonb("social_profiles").$type<string[]>().default([]),
+  reviews: jsonb("reviews").$type<{ text: string; source: string }[]>().default([]),
+  recentSignals: jsonb("recent_signals").$type<string[]>().default([]),
+  marketingSignals: jsonb("marketing_signals").$type<string[]>().default([]),
+  buyingSignals: jsonb("buying_signals")
+    .$type<{ signal: string; source: string; date: string | null; confidence: number }[]>()
+    .default([]),
+  websiteAnalysis: jsonb("website_analysis").$type<Record<string, unknown>>(),
+  sources: jsonb("sources").$type<{ url: string; title: string }[]>().default([]),
+  promptVersion: varchar("prompt_version", { length: 10 }),
+  researchedAt: timestamp("researched_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const aiOpportunities = pgTable(
+  "ai_opportunities",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    category: varchar("category", { length: 40 }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    severity: varchar("severity", { length: 10 }), // LOW/MEDIUM/HIGH
+    confidence: integer("confidence"),
+    evidence: jsonb("evidence")
+      .$type<{ finding: string; sourceUrl: string | null; observedDate: string | null; evidenceType: string; confidence: number }[]>()
+      .default([]),
+    recommendedService: text("recommended_service"),
+    potentialImpact: text("potential_impact"),
+    reason: text("reason"),
+    promptVersion: varchar("prompt_version", { length: 10 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("ai_opportunities_contact_idx").on(table.contactId)]
+);
+
+export const aiScores = pgTable("ai_scores", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "cascade" })
+    .unique(),
+  overallScore: integer("overall_score").notNull(),
+  fitScore: integer("fit_score"),
+  opportunityScore: integer("opportunity_score"),
+  buyingSignalScore: integer("buying_signal_score"),
+  dataConfidenceScore: integer("data_confidence_score"),
+  urgencyScore: integer("urgency_score"),
+  scoreReason: text("score_reason"),
+  scoredAt: timestamp("scored_at").defaultNow().notNull(),
+});
+
+export const aiSalesBriefs = pgTable("ai_sales_briefs", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "cascade" })
+    .unique(),
+  primaryOpportunity: text("primary_opportunity"),
+  secondaryOpportunity: text("secondary_opportunity"),
+  buyingSignals: jsonb("buying_signals").$type<string[]>().default([]),
+  likelyObjective: text("likely_objective"),
+  recommendedService: text("recommended_service"),
+  evidence: jsonb("evidence").$type<string[]>().default([]),
+  riskFactors: jsonb("risk_factors").$type<string[]>().default([]),
+  recommendedApproach: text("recommended_approach"),
+  promptVersion: varchar("prompt_version", { length: 10 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const AI_OUTREACH_TYPES = ["cold_email", "followup_email", "linkedin", "sms", "whatsapp"] as const;
+
+export const aiOutreach = pgTable(
+  "ai_outreach",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 20 }).notNull(),
+    subject: text("subject"),
+    body: text("body").notNull(),
+    status: varchar("status", { length: 20 }).default("draft").notNull(), // draft/sent
+    promptVersion: varchar("prompt_version", { length: 10 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("ai_outreach_contact_idx").on(table.contactId)]
+);
+
+export const aiCallScripts = pgTable("ai_call_scripts", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id")
+    .notNull()
+    .references(() => contacts.id, { onDelete: "cascade" })
+    .unique(),
+  opening: text("opening"),
+  whyCalling: text("why_calling"),
+  primaryProblem: text("primary_problem"),
+  evidence: jsonb("evidence").$type<string[]>().default([]),
+  discoveryQuestions: jsonb("discovery_questions").$type<string[]>().default([]),
+  recommendedAngle: text("recommended_angle"),
+  likelyObjections: jsonb("likely_objections").$type<{ objection: string; response: string }[]>().default([]),
+  nextStepRecommendation: text("next_step_recommendation"),
+  promptVersion: varchar("prompt_version", { length: 10 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+/** Every Gemini call, for usage tracking and debugging. Never stores the API key. */
+export const aiUsageLog = pgTable(
+  "ai_usage_log",
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id").references(() => contacts.id, { onDelete: "set null" }),
+    operation: varchar("operation", { length: 40 }).notNull(),
+    provider: varchar("provider", { length: 20 }).default("gemini").notNull(),
+    model: varchar("model", { length: 40 }),
+    promptVersion: varchar("prompt_version", { length: 10 }),
+    status: varchar("status", { length: 20 }).notNull(), // SUCCESS/FAILED
+    inputTokens: integer("input_tokens"),
+    outputTokens: integer("output_tokens"),
+    totalTokens: integer("total_tokens"),
+    durationMs: integer("duration_ms"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_usage_log_contact_idx").on(table.contactId),
+    index("ai_usage_log_created_idx").on(table.createdAt),
+  ]
+);

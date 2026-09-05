@@ -13,6 +13,7 @@ const items = [
   { href: "/calls", label: "Call History", icon: "📋" },
   { href: "/leads", label: "Leads", icon: "🔥" },
   { href: "/enrichment", label: "Enrichment", icon: "🔌" },
+  { href: "/growth-intelligence", label: "Growth Intelligence", icon: "🧠" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];

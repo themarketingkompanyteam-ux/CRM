@@ -7,6 +7,7 @@ import {
   OUTCOME_DEFAULT_TEMPERATURE,
   followUpForOutcome,
 } from "@/lib/call-outcomes";
+import { maybeTriggerGrowthIntelligence } from "@/lib/ai/automation";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -56,6 +57,12 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
     })
     .where(eq(contacts.id, contactId));
+
+  if (newTemperature !== contact.leadStatus) {
+    maybeTriggerGrowthIntelligence(contactId, newTemperature).catch((err) =>
+      console.error("Growth Intelligence trigger failed", err)
+    );
+  }
 
   const contactName = `${contact.firstName} ${contact.lastName ?? ""}`.trim();
   const followUp = followUpForOutcome(

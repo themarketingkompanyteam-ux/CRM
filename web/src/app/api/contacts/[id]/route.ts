@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { contacts } from "@/db/schema";
+import { maybeTriggerGrowthIntelligence } from "@/lib/ai/automation";
 
 const LEAD_STATUSES = ["Cold", "Warm", "Hot", "Customer"];
 
@@ -39,6 +40,13 @@ export async function PATCH(
   }
 
   await db.update(contacts).set(update).where(eq(contacts.id, Number(id)));
+
+  if (typeof update.leadStatus === "string") {
+    maybeTriggerGrowthIntelligence(Number(id), update.leadStatus).catch((err) =>
+      console.error("Growth Intelligence trigger failed", err)
+    );
+  }
+
   return NextResponse.json({ status: "updated" });
 }
 

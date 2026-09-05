@@ -22,7 +22,7 @@ async function countAttemptsSince(providerKey: string, since: Date): Promise<num
   const [{ value }] = await db
     .select({ value: sql<number>`count(*)::int` })
     .from(enrichmentAttempts)
-    .where(and(eq(enrichmentAttempts.provider, providerKey), sql`${enrichmentAttempts.createdAt} >= ${since}`));
+    .where(and(eq(enrichmentAttempts.provider, providerKey), sql`${enrichmentAttempts.createdAt} >= ${since.toISOString()}`));
   return Number(value);
 }
 
