@@ -7,7 +7,7 @@ import type { ImportJobData } from "@/queue/import-queue";
 import { db } from "@/db";
 import { contacts, companies, importJobs, listMemberships, activities } from "@/db/schema";
 import { detectColumnMapping, extractRow, ColumnMapping } from "@/lib/csv-mapping";
-import { predictNameFromEmail, predictCompanyFromEmail } from "@/lib/name-prediction";
+import { predictNameFromEmail, predictCompanyFromEmail, domainFromEmail } from "@/lib/name-prediction";
 
 const BATCH_SIZE = 200;
 const PROGRESS_UPDATE_EVERY = 200;
@@ -135,6 +135,7 @@ async function processImportJob(data: ImportJobData) {
             website: row.website || null,
             location: row.location || null,
             companyId,
+            companyDomain: row.email ? domainFromEmail(row.email) : null,
             nameGuessed: nameGuessed ? 1 : 0,
           })
           .returning({ id: contacts.id });

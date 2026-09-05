@@ -110,9 +110,11 @@ async function saveEnrichmentResult(contactId: number, result: EnrichmentResult)
     enrichedAt: new Date(),
     updatedAt: new Date(),
   };
-  // Never overwrite an existing email/phone the contact already has — only fill if empty.
+  // Never overwrite an existing email/phone/LinkedIn/title the contact already has — only fill if empty.
   if (bestEmail && !contact.email) contactPatch.email = bestEmail.email;
   if (bestPhone && !contact.phone) contactPatch.phone = bestPhone.phone;
+  if (result.linkedinUrl && !contact.linkedinUrl) contactPatch.linkedinUrl = result.linkedinUrl;
+  if (result.jobTitle && !contact.jobTitle) contactPatch.jobTitle = result.jobTitle;
 
   await db.update(contacts).set(contactPatch).where(eq(contacts.id, contactId));
 }

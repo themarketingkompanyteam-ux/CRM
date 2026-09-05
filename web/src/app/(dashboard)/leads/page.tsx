@@ -26,12 +26,18 @@ type Lead = {
   name: string;
   phone: string | null;
   email: string | null;
+  linkedinUrl: string | null;
   companyName: string | null;
   leadStatus: string;
   nextFollowUpAt: string | null;
   lastOutcome: string | null;
   lastNotes: string | null;
   lastCallAt: string | null;
+  enrichmentStatus: string;
+  enrichmentConfidence: number | null;
+  enrichmentProvider: string | null;
+  extraEmails: { email: string; provider: string | null }[];
+  extraPhones: { phone: string; provider: string | null }[];
 };
 
 type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
@@ -83,14 +89,29 @@ export default function LeadsPage() {
     CallBack: callBackLeads?.length,
   };
 
+  const [enrichingId, setEnrichingId] = useState<number | null>(null);
+
+  type EnrichApiResult = {
+    success: boolean;
+    results: { operation: string; success: boolean; providerUsed?: string; outcome: string }[];
+  };
+
   const enrichOneMutation = useMutation({
     mutationFn: (contactId: number) =>
-      apiFetch<{ success: boolean; providerUsed?: string }>("/api/enrichment/enrich", { method: "POST", body: JSON.stringify({ contactId }) }),
+      apiFetch<EnrichApiResult>("/api/enrichment/enrich", { method: "POST", body: JSON.stringify({ contactId }) }),
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
-      if (data.success) toast.success(`Enriched via ${data.providerUsed}`);
-      else toast.error("No provider found a match");
+      const found = data.results.filter((r) => r.success);
+      if (found.length > 0) {
+        toast.success(
+          found.map((r) => `${r.operation === "search_email" ? "Email" : "Phone"} found via ${r.providerUsed}`).join(" · ")
+        );
+      } else {
+        toast.error("No provider found new information for this lead");
+      }
     },
+    onSettled: () => setEnrichingId(null),
   });
 
   const pushToQueueMutation = useMutation({
@@ -159,7 +180,37 @@ export default function LeadsPage() {
                   </div>
                   <div className="mb-1 text-sm text-muted-foreground">{lead.companyName || "—"}</div>
                   <div className="mb-2 text-sm">{lead.phone}</div>
-                  {lead.email && <div className="mb-2 text-xs text-muted-foreground">{lead.email}</div>}
+                  {lead.email && <div className="mb-1 text-xs text-muted-foreground">{lead.email}</div>}
+                  {lead.linkedinUrl && (
+                    <a
+                      href={lead.linkedinUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mb-1 block text-xs text-primary underline"
+                    >
+                      LinkedIn ↗
+                    </a>
+                  )}
+                  {(lead.extraEmails.length > 0 || lead.extraPhones.length > 0) && (
+                    <div className="mb-2 space-y-0.5 rounded-md bg-secondary/40 p-2">
+                      <div className="text-[11px] font-semibold uppercase text-muted-foreground">Also found</div>
+                      {lead.extraEmails.map((e) => (
+                        <div key={e.email} className="text-xs">
+                          {e.email} <span className="text-muted-foreground">({e.provider})</span>
+                        </div>
+                      ))}
+                      {lead.extraPhones.map((p) => (
+                        <div key={p.phone} className="text-xs">
+                          {p.phone} <span className="text-muted-foreground">({p.provider})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {lead.enrichmentStatus === "ENRICHED" && lead.enrichmentConfidence !== null && (
+                    <div className="mb-2 text-[11px] text-primary">
+                      Enriched via {lead.enrichmentProvider} · {lead.enrichmentConfidence}% confidence
+                    </div>
+                  )}
                   {lead.lastOutcome && (
                     <div className="mb-1 text-xs text-primary">Last outcome: {lead.lastOutcome}</div>
                   )}
@@ -196,11 +247,14 @@ export default function LeadsPage() {
                     </Button>
                     <Button
                       variant="outline"
-                      disabled={!!lead.email || enrichOneMutation.isPending}
-                      onClick={() => enrichOneMutation.mutate(lead.id)}
-                      title={lead.email ? "Already has an email" : "Find email via enrichment"}
+                      disabled={enrichingId === lead.id}
+                      onClick={() => {
+                        setEnrichingId(lead.id);
+                        enrichOneMutation.mutate(lead.id);
+                      }}
+                      title="Find email, phone, and LinkedIn via enrichment providers"
                     >
-                      Enrich
+                      {enrichingId === lead.id ? "Enriching..." : "Enrich"}
                     </Button>
                   </div>
                 </div>

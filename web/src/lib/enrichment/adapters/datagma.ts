@@ -24,8 +24,8 @@ export const datagmaAdapter: EnrichmentAdapter = {
   async searchContact(input): Promise<ProviderCallResult> {
     const fullName = input.fullName || [input.firstName, input.lastName].filter(Boolean).join(" ");
     const company = input.companyName || input.companyDomain;
-    if (!fullName || !company) {
-      return { outcome: "NO_MATCH", durationMs: 0, errorMessage: "Datagma requires a full name and company" };
+    if (!input.firstName || !input.lastName || !company) {
+      return { outcome: "NO_MATCH", durationMs: 0, errorMessage: "Datagma requires a first name, last name, and company" };
     }
     try {
       const params = new URLSearchParams({ apiId: apiId(), fullName, company, findEmailV2Step: "3" });
@@ -54,8 +54,8 @@ export const datagmaAdapter: EnrichmentAdapter = {
   async findPhone(input): Promise<ProviderCallResult> {
     const fullName = input.fullName || [input.firstName, input.lastName].filter(Boolean).join(" ");
     const company = input.companyName || input.companyDomain;
-    if (!fullName || !company) {
-      return { outcome: "NO_MATCH", durationMs: 0, errorMessage: "Datagma requires a full name and company" };
+    if (!input.firstName || !input.lastName || !company) {
+      return { outcome: "NO_MATCH", durationMs: 0, errorMessage: "Datagma requires a first name, last name, and company" };
     }
     try {
       const params = new URLSearchParams({ apiId: apiId(), fullName, data: company, phoneFull: "true" });

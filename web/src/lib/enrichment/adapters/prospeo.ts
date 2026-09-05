@@ -39,7 +39,15 @@ export const prospeoAdapter: EnrichmentAdapter = {
   async searchContact(input): Promise<ProviderCallResult> {
     try {
       const { status, text, json, durationMs } = await callEnrichPerson(input, false);
-      if (status !== 200) return { outcome: classifyStatus(status, text), errorMessage: text.slice(0, 300), durationMs };
+      if (status !== 200) {
+        // Prospeo signals a genuine "nothing found" via a non-200 status with
+        // error_code NO_MATCH in the body, not a 200 with an empty person —
+        // don't count that as a provider failure.
+        if ((json as { error_code?: string } | null)?.error_code === "NO_MATCH") {
+          return { outcome: "NO_MATCH", durationMs, creditsUsed: 0 };
+        }
+        return { outcome: classifyStatus(status, text), errorMessage: text.slice(0, 300), durationMs };
+      }
 
       const person = (json as { person?: Record<string, unknown> } | null)?.person;
       const email = person?.email as { status?: string; email?: string } | undefined;
@@ -54,6 +62,8 @@ export const prospeoAdapter: EnrichmentAdapter = {
         result: {
           firstName: person?.first_name as string | undefined,
           lastName: person?.last_name as string | undefined,
+          jobTitle: person?.current_job_title as string | undefined,
+          linkedinUrl: person?.linkedin_url as string | undefined,
           provider: "prospeo",
           confidence: 90,
           emails: [{ email: email.email, confidence: 90, verificationStatus: "valid" }],
@@ -68,7 +78,12 @@ export const prospeoAdapter: EnrichmentAdapter = {
   async findPhone(input): Promise<ProviderCallResult> {
     try {
       const { status, text, json, durationMs } = await callEnrichPerson(input, true);
-      if (status !== 200) return { outcome: classifyStatus(status, text), errorMessage: text.slice(0, 300), durationMs };
+      if (status !== 200) {
+        if ((json as { error_code?: string } | null)?.error_code === "NO_MATCH") {
+          return { outcome: "NO_MATCH", durationMs, creditsUsed: 0 };
+        }
+        return { outcome: classifyStatus(status, text), errorMessage: text.slice(0, 300), durationMs };
+      }
 
       const person = (json as { person?: Record<string, unknown> } | null)?.person;
       const mobile = person?.mobile as { status?: string; mobile?: string } | undefined;
@@ -81,6 +96,10 @@ export const prospeoAdapter: EnrichmentAdapter = {
         durationMs,
         creditsUsed: 10,
         result: {
+          firstName: person?.first_name as string | undefined,
+          lastName: person?.last_name as string | undefined,
+          jobTitle: person?.current_job_title as string | undefined,
+          linkedinUrl: person?.linkedin_url as string | undefined,
           provider: "prospeo",
           confidence: 85,
           emails: [],

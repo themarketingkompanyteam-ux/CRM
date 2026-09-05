@@ -19,18 +19,29 @@ export async function GET(request: NextRequest) {
     last_name: string | null;
     phone: string | null;
     email: string | null;
+    linkedin_url: string | null;
     company_name: string | null;
     lead_status: string;
     next_follow_up_at: string | null;
     last_outcome: string | null;
     last_notes: string | null;
     last_call_at: string | null;
+    enrichment_status: string;
+    enrichment_confidence: number | null;
+    enrichment_provider: string | null;
+    extra_emails: { email: string; provider: string | null }[];
+    extra_phones: { phone: string; provider: string | null }[];
   }>(sql`
-    SELECT c.id, c.first_name, c.last_name, c.phone, c.email, co.name AS company_name,
+    SELECT c.id, c.first_name, c.last_name, c.phone, c.email, c.linkedin_url, co.name AS company_name,
       c.lead_status, c.next_follow_up_at,
+      c.enrichment_status, c.enrichment_confidence, c.enrichment_provider,
       (SELECT outcome FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_outcome,
       (SELECT notes FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_notes,
-      (SELECT created_at FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_call_at
+      (SELECT created_at FROM calls WHERE contact_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_call_at,
+      COALESCE((SELECT json_agg(json_build_object('email', email, 'provider', provider))
+                FROM contact_emails WHERE contact_id = c.id AND email != COALESCE(c.email, '')), '[]') AS extra_emails,
+      COALESCE((SELECT json_agg(json_build_object('phone', phone, 'provider', provider))
+                FROM contact_phones WHERE contact_id = c.id AND phone != COALESCE(c.phone, '')), '[]') AS extra_phones
     FROM contacts c
     LEFT JOIN companies co ON c.company_id = co.id
     WHERE ${whereClause}
@@ -44,12 +55,18 @@ export async function GET(request: NextRequest) {
       name: `${r.first_name} ${r.last_name ?? ""}`.trim(),
       phone: r.phone,
       email: r.email,
+      linkedinUrl: r.linkedin_url,
       companyName: r.company_name,
       leadStatus: r.lead_status,
       nextFollowUpAt: r.next_follow_up_at,
       lastOutcome: r.last_outcome,
       lastNotes: r.last_notes,
       lastCallAt: r.last_call_at,
+      enrichmentStatus: r.enrichment_status,
+      enrichmentConfidence: r.enrichment_confidence,
+      enrichmentProvider: r.enrichment_provider,
+      extraEmails: r.extra_emails ?? [],
+      extraPhones: r.extra_phones ?? [],
     }))
   );
 }

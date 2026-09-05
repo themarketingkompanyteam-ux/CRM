@@ -33,6 +33,13 @@ export function predictNameFromEmail(email: string): { firstName: string; lastNa
   return null;
 }
 
+/** Extracts the business domain from an email, skipping free consumer providers. */
+export function domainFromEmail(email: string): string | null {
+  const domain = email.split("@")[1]?.toLowerCase().trim();
+  if (!domain || FREE_EMAIL_DOMAINS.has(domain)) return null;
+  return domain;
+}
+
 /** Guess a company name from an email domain, skipping free consumer providers. */
 export function predictCompanyFromEmail(email: string): string | null {
   const domain = email.split("@")[1]?.toLowerCase().trim();
