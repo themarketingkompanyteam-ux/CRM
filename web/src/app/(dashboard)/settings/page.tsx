@@ -233,6 +233,7 @@ function GrowthIntelligenceSection() {
           <div className="space-y-1.5">
             <Label className="text-xs">Minimum opportunity score</Label>
             <Input
+              key={s?.minOpportunityScore ?? "loading"}
               type="number"
               defaultValue={s?.minOpportunityScore}
               onBlur={(e) => saveMutation.mutate({ minOpportunityScore: Number(e.target.value) })}
@@ -241,6 +242,7 @@ function GrowthIntelligenceSection() {
           <div className="space-y-1.5">
             <Label className="text-xs">Daily AI analysis limit</Label>
             <Input
+              key={s?.dailyAiLimit ?? "loading"}
               type="number"
               defaultValue={s?.dailyAiLimit}
               onBlur={(e) => saveMutation.mutate({ dailyAiLimit: Number(e.target.value) })}
@@ -249,6 +251,7 @@ function GrowthIntelligenceSection() {
           <div className="space-y-1.5">
             <Label className="text-xs">Research refresh period (days)</Label>
             <Input
+              key={s?.refreshDays ?? "loading"}
               type="number"
               defaultValue={s?.refreshDays}
               onBlur={(e) => saveMutation.mutate({ refreshDays: Number(e.target.value) })}
