@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "worker": "tsx watch --env-file=.env.local src/workers/all.ts",
+    "worker:prod": "tsx --env-file=.env.local src/workers/all.ts",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

@@ -6,6 +6,10 @@ import { users } from "@/db/schema";
 import { verifyPassword } from "@/lib/password";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Required in production: Auth.js refuses callback/session requests from a host it doesn't
+  // recognize unless told to trust it. Safe here since this app is self-hosted behind no
+  // unpredictable reverse proxy — the host is always this server's own address.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
