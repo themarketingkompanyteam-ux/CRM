@@ -625,3 +625,159 @@ export const emailSendingAccounts = pgTable("email_sending_accounts", {
   tags: jsonb("tags").$type<string[]>().default([]),
   syncedAt: timestamp("synced_at").defaultNow().notNull(),
 });
+
+// ---------- Direct-send Mailbox Engine (Gmail API / SMTP, no third-party ESP) ----------
+
+export const MAILBOX_PROVIDERS = ["gmail", "smtp"] as const;
+export const MAILBOX_CONNECTION_STATUSES = ["disconnected", "connected", "error"] as const;
+export const MAILBOX_WARMUP_STATUSES = ["not_started", "warming", "warmed", "paused"] as const;
+
+export const mailboxes = pgTable(
+  "mailboxes",
+  {
+    id: serial("id").primaryKey(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
+    domain: text("domain").notNull(),
+    provider: varchar("provider", { length: 10 }).notNull(), // gmail | smtp
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    // Gmail OAuth (encrypted at rest — see lib/mailbox/crypto.ts). Never sent to the frontend.
+    oauthRefreshTokenEnc: text("oauth_refresh_token_enc"),
+    // SMTP/IMAP (encrypted at rest).
+    smtpHost: text("smtp_host"),
+    smtpPort: integer("smtp_port"),
+    smtpPasswordEnc: text("smtp_password_enc"),
+    imapHost: text("imap_host"),
+    imapPort: integer("imap_port"),
+    connectionStatus: varchar("connection_status", { length: 20 }).default("disconnected").notNull(),
+    lastConnectionError: text("last_connection_error"),
+    // Warmup / ramp
+    warmupStatus: varchar("warmup_status", { length: 20 }).default("not_started").notNull(),
+    warmupStartedAt: timestamp("warmup_started_at"),
+    warmupDay: integer("warmup_day").default(0).notNull(),
+    warmupDailyLimit: integer("warmup_daily_limit").default(5).notNull(),
+    // Capacity: total = warmup allocation + campaign allocation, enforced separately.
+    campaignDailyLimit: integer("campaign_daily_limit").default(30).notNull(),
+    // Daily counters, reset by the reset-daily-counters job.
+    sentToday: integer("sent_today").default(0).notNull(),
+    deliveredToday: integer("delivered_today").default(0).notNull(),
+    bouncedToday: integer("bounced_today").default(0).notNull(),
+    repliedToday: integer("replied_today").default(0).notNull(),
+    unsubscribesToday: integer("unsubscribes_today").default(0).notNull(),
+    countersResetAt: timestamp("counters_reset_at").defaultNow().notNull(),
+    // Health
+    healthScore: integer("health_score").default(100).notNull(),
+    healthStatus: varchar("health_status", { length: 20 }).default("healthy").notNull(), // healthy/monitoring/throttled/paused
+    healthReasons: jsonb("health_reasons").$type<string[]>().default([]),
+    lastHealthCheckAt: timestamp("last_health_check_at"),
+    campaignEnabled: integer("campaign_enabled").default(1).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("mailboxes_domain_idx").on(table.domain),
+    index("mailboxes_connection_status_idx").on(table.connectionStatus),
+    index("mailboxes_health_status_idx").on(table.healthStatus),
+  ]
+);
+
+export const MAILBOX_SEND_STATUSES = ["sent", "failed", "bounced"] as const;
+
+export const mailboxSendLog = pgTable(
+  "mailbox_send_log",
+  {
+    id: serial("id").primaryKey(),
+    mailboxId: integer("mailbox_id")
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: "cascade" }),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    sequenceEnrollmentId: integer("sequence_enrollment_id"),
+    subject: text("subject").notNull(),
+    status: varchar("status", { length: 20 }).notNull(),
+    providerMessageId: text("provider_message_id"),
+    error: text("error"),
+    sentAt: timestamp("sent_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("mailbox_send_log_mailbox_idx").on(table.mailboxId),
+    index("mailbox_send_log_contact_idx").on(table.contactId),
+    index("mailbox_send_log_sent_at_idx").on(table.sentAt),
+  ]
+);
+
+/** Per-mailbox audit trail of warmup/health/pause decisions, for the "why did this pause" log. */
+export const mailboxAuditLog = pgTable(
+  "mailbox_audit_log",
+  {
+    id: serial("id").primaryKey(),
+    mailboxId: integer("mailbox_id")
+      .notNull()
+      .references(() => mailboxes.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 40 }).notNull(),
+    reason: text("reason"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("mailbox_audit_log_mailbox_idx").on(table.mailboxId)]
+);
+
+export const SEQUENCE_STATUSES = ["draft", "active", "paused"] as const;
+
+export const sequences = pgTable("sequences", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).default("draft").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const sequenceSteps = pgTable(
+  "sequence_steps",
+  {
+    id: serial("id").primaryKey(),
+    sequenceId: integer("sequence_id")
+      .notNull()
+      .references(() => sequences.id, { onDelete: "cascade" }),
+    stepOrder: integer("step_order").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    delayDays: integer("delay_days").default(3).notNull(),
+  },
+  (table) => [index("sequence_steps_sequence_idx").on(table.sequenceId)]
+);
+
+export const SEQUENCE_ENROLLMENT_STATUSES = [
+  "active",
+  "completed",
+  "stopped_reply",
+  "stopped_bounce",
+  "stopped_unsubscribe",
+  "stopped_manual",
+] as const;
+
+export const sequenceEnrollments = pgTable(
+  "sequence_enrollments",
+  {
+    id: serial("id").primaryKey(),
+    sequenceId: integer("sequence_id")
+      .notNull()
+      .references(() => sequences.id, { onDelete: "cascade" }),
+    contactId: integer("contact_id")
+      .notNull()
+      .references(() => contacts.id, { onDelete: "cascade" }),
+    currentStep: integer("current_step").default(0).notNull(),
+    status: varchar("status", { length: 20 }).default("active").notNull(),
+    nextSendAt: timestamp("next_send_at").defaultNow().notNull(),
+    lastSentAt: timestamp("last_sent_at"),
+    enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("sequence_enrollments_unique").on(table.sequenceId, table.contactId),
+    index("sequence_enrollments_status_idx").on(table.status),
+    index("sequence_enrollments_next_send_idx").on(table.nextSendAt),
+  ]
+);
