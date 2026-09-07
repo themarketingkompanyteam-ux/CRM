@@ -15,6 +15,7 @@ type Domain = {
   domain: string;
   status: string;
   dkimSelector: string | null;
+  dkimOptional: number;
   mxStatus: string;
   spfStatus: string;
   dkimStatus: string;
@@ -117,6 +118,15 @@ export default function DomainsPage() {
     },
   });
 
+  const toggleDkimOptionalMutation = useMutation({
+    mutationFn: ({ id, dkimOptional }: { id: number; dkimOptional: boolean }) =>
+      apiFetch<Domain>(`/api/domains/${id}`, { method: "PATCH", body: JSON.stringify({ dkimOptional: dkimOptional ? 1 : 0 }) }),
+    onSuccess: (d) => {
+      queryClient.invalidateQueries({ queryKey: ["domains"] });
+      toast.success(d.dkimOptional ? `DKIM requirement relaxed for ${d.domain}` : `DKIM requirement restored for ${d.domain}`);
+    },
+  });
+
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
@@ -183,7 +193,19 @@ export default function DomainsPage() {
                   </td>
                   <td className="p-3"><CheckBadge status={d.mxStatus} /></td>
                   <td className="p-3"><CheckBadge status={d.spfStatus} /></td>
-                  <td className="p-3"><CheckBadge status={d.dkimStatus} /></td>
+                  <td className="p-3">
+                    <CheckBadge status={d.dkimOptional ? "pass" : d.dkimStatus} />
+                    {d.dkimOptional === 1 && <div className="text-[10px] text-amber-400">exempted</div>}
+                    <label className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground" title="Don't require DKIM for this domain — only for domains you don't control the DNS of (e.g. a personal test address). Leave off for any domain you own and send real campaigns from.">
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3"
+                        checked={!!d.dkimOptional}
+                        onChange={(e) => toggleDkimOptionalMutation.mutate({ id: d.id, dkimOptional: e.target.checked })}
+                      />
+                      skip DKIM
+                    </label>
+                  </td>
                   <td className="p-3"><CheckBadge status={d.dmarcStatus} /></td>
                   <td className="p-3">
                     <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", d.domainHealthScore >= 90 ? "bg-green-950 text-green-400" : d.domainHealthScore >= 60 ? "bg-amber-950 text-amber-400" : "bg-red-950 text-red-400")}>

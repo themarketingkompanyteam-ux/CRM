@@ -9,6 +9,7 @@ type DomainRow = {
   domain: string;
   status: string;
   dkim_selector: string | null;
+  dkim_optional: number;
   mx_status: string;
   spf_status: string;
   dkim_status: string;
@@ -28,7 +29,7 @@ export async function GET() {
   // for the companies contact-count; see project history).
   const rows = await db.execute<DomainRow>(sql`
     SELECT
-      d.id, d.domain, d.status, d.dkim_selector, d.mx_status, d.spf_status, d.dkim_status, d.dmarc_status,
+      d.id, d.domain, d.status, d.dkim_selector, d.dkim_optional, d.mx_status, d.spf_status, d.dkim_status, d.dmarc_status,
       d.check_reasons, d.domain_health_score, d.dns_last_checked_at, d.created_at,
       (SELECT COUNT(*) FROM mailboxes WHERE mailboxes.domain_id = d.id)::int AS mailbox_count,
       COALESCE((
@@ -45,6 +46,7 @@ export async function GET() {
       domain: r.domain,
       status: r.status,
       dkimSelector: r.dkim_selector,
+      dkimOptional: r.dkim_optional,
       mxStatus: r.mx_status,
       spfStatus: r.spf_status,
       dkimStatus: r.dkim_status,

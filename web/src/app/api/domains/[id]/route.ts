@@ -19,12 +19,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const id = Number((await params).id);
   const body = await request.json();
   const updatable: Record<string, unknown> = {};
-  for (const key of ["dkimSelector", "notes", "status"] as const) {
+  for (const key of ["dkimSelector", "notes", "status", "dkimOptional"] as const) {
     if (body[key] !== undefined) updatable[key] = body[key];
   }
   await db.update(domains).set(updatable).where(eq(domains.id, id));
-  // Re-run the check immediately if the DKIM selector changed, so the UI reflects it without a separate click.
-  const updated = body.dkimSelector !== undefined ? await runDomainCheck(id) : (await db.select().from(domains).where(eq(domains.id, id)).limit(1))[0];
+  // Re-run the check immediately if the DKIM selector or exemption changed, so the health score
+  // and gate status reflect it without a separate "Run Check" click.
+  const needsRecheck = body.dkimSelector !== undefined || body.dkimOptional !== undefined;
+  const updated = needsRecheck ? await runDomainCheck(id) : (await db.select().from(domains).where(eq(domains.id, id)).limit(1))[0];
   return NextResponse.json(updated);
 }
 

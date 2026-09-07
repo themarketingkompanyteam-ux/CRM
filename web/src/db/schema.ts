@@ -641,6 +641,10 @@ export const domains = pgTable("domains", {
   dmarcStatus: varchar("dmarc_status", { length: 10 }).default("unknown").notNull(),
   checkReasons: jsonb("check_reasons").$type<string[]>().default([]),
   domainHealthScore: integer("domain_health_score").default(0).notNull(),
+  // Escape hatch for domains you don't control the DNS of (e.g. testing with a personal
+  // @gmail.com address) — DKIM can never be verified there. Off by default; leaving it off for
+  // any domain you actually own and send real campaigns from is the whole point of the gate.
+  dkimOptional: integer("dkim_optional").default(0).notNull(),
   notes: text("notes"),
   dnsLastCheckedAt: timestamp("dns_last_checked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
