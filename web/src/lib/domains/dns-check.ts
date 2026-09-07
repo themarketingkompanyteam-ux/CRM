@@ -1,4 +1,14 @@
-import { resolveMx, resolveTxt } from "dns/promises";
+import { Resolver } from "dns/promises";
+
+// The default OS/network resolver on some networks silently blocks or fails raw UDP TXT
+// queries (confirmed here) even though MX/A lookups work fine. A dedicated Resolver pointed at
+// public DNS avoids that without touching global Node DNS config (which would also affect
+// Postgres/Redis hostname resolution elsewhere in the app).
+function publicResolver(): Resolver {
+  const resolver = new Resolver();
+  resolver.setServers(["8.8.8.8", "1.1.1.1"]);
+  return resolver;
+}
 
 export type DnsCheckStatus = "pass" | "fail" | "unknown";
 
@@ -45,8 +55,8 @@ async function safeLookup<T>(fn: () => Promise<T[]>): Promise<Lookup<T>> {
   }
 }
 
-async function txtStrings(hostname: string): Promise<Lookup<string>> {
-  const result = await safeLookup(() => resolveTxt(hostname));
+async function txtStrings(resolver: Resolver, hostname: string): Promise<Lookup<string>> {
+  const result = await safeLookup(() => resolver.resolveTxt(hostname));
   if (!result.ok) return result;
   return { ok: true, records: result.records.map((chunks) => chunks.join("")) };
 }
@@ -60,12 +70,13 @@ async function txtStrings(hostname: string): Promise<Lookup<string>> {
  */
 export async function checkDomain(domain: string, dkimSelector?: string | null): Promise<DnsCheckResult> {
   const reasons: string[] = [];
+  const resolver = publicResolver();
 
   const [mxResult, spfResult, dkimResult, dmarcResult] = await Promise.all([
-    safeLookup(() => resolveMx(domain)),
-    txtStrings(domain),
-    dkimSelector ? txtStrings(`${dkimSelector}._domainkey.${domain}`) : Promise.resolve<Lookup<string>>({ ok: true, records: [] }),
-    txtStrings(`_dmarc.${domain}`),
+    safeLookup(() => resolver.resolveMx(domain)),
+    txtStrings(resolver, domain),
+    dkimSelector ? txtStrings(resolver, `${dkimSelector}._domainkey.${domain}`) : Promise.resolve<Lookup<string>>({ ok: true, records: [] }),
+    txtStrings(resolver, `_dmarc.${domain}`),
   ]);
 
   let mx: DnsCheckStatus;
