@@ -10,6 +10,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       id: mailboxes.id,
       email: mailboxes.email,
       domain: mailboxes.domain,
+      domainId: mailboxes.domainId,
       provider: mailboxes.provider,
       connectionStatus: mailboxes.connectionStatus,
       lastConnectionError: mailboxes.lastConnectionError,

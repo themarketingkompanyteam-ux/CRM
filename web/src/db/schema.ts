@@ -626,6 +626,26 @@ export const emailSendingAccounts = pgTable("email_sending_accounts", {
   syncedAt: timestamp("synced_at").defaultNow().notNull(),
 });
 
+// ---------- Domains (DNS authentication health, feeds the mailbox compliance gate) ----------
+
+export const DOMAIN_CHECK_STATUSES = ["pass", "fail", "unknown"] as const;
+
+export const domains = pgTable("domains", {
+  id: serial("id").primaryKey(),
+  domain: varchar("domain", { length: 255 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).default("active").notNull(),
+  dkimSelector: varchar("dkim_selector", { length: 100 }),
+  mxStatus: varchar("mx_status", { length: 10 }).default("unknown").notNull(),
+  spfStatus: varchar("spf_status", { length: 10 }).default("unknown").notNull(),
+  dkimStatus: varchar("dkim_status", { length: 10 }).default("unknown").notNull(),
+  dmarcStatus: varchar("dmarc_status", { length: 10 }).default("unknown").notNull(),
+  checkReasons: jsonb("check_reasons").$type<string[]>().default([]),
+  domainHealthScore: integer("domain_health_score").default(0).notNull(),
+  notes: text("notes"),
+  dnsLastCheckedAt: timestamp("dns_last_checked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // ---------- Direct-send Mailbox Engine (Gmail API / SMTP, no third-party ESP) ----------
 
 export const MAILBOX_PROVIDERS = ["gmail", "smtp"] as const;
@@ -638,6 +658,7 @@ export const mailboxes = pgTable(
     id: serial("id").primaryKey(),
     email: varchar("email", { length: 255 }).notNull().unique(),
     domain: text("domain").notNull(),
+    domainId: integer("domain_id").references(() => domains.id, { onDelete: "set null" }),
     provider: varchar("provider", { length: 10 }).notNull(), // gmail | smtp
     firstName: text("first_name"),
     lastName: text("last_name"),
@@ -676,6 +697,7 @@ export const mailboxes = pgTable(
   },
   (table) => [
     index("mailboxes_domain_idx").on(table.domain),
+    index("mailboxes_domain_id_idx").on(table.domainId),
     index("mailboxes_connection_status_idx").on(table.connectionStatus),
     index("mailboxes_health_status_idx").on(table.healthStatus),
   ]

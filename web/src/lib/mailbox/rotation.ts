@@ -1,6 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { mailboxes } from "@/db/schema";
+import { mailboxes, domains } from "@/db/schema";
+import { domainPassesComplianceGate } from "@/lib/domains/service";
 
 /**
  * Effective daily cap for the mailbox's current phase. Sends here are always real campaign
@@ -20,8 +21,9 @@ export function effectiveDailyLimit(mailbox: { warmupStatus: string; healthStatu
 
 /**
  * Picks the least-utilized eligible mailbox: connected, campaign-enabled, not health-paused,
- * and under its phase-appropriate daily cap. Never round-robins blindly — always favors
- * whichever eligible mailbox has sent the least today, spreading load naturally.
+ * under its phase-appropriate daily cap, AND whose domain passes the DNS compliance gate
+ * (MX/SPF/DKIM/DMARC). Never round-robins blindly — always favors whichever eligible mailbox
+ * has sent the least today, spreading load naturally.
  */
 export async function pickMailboxForSend(candidateMailboxIds?: number[]) {
   const conditions = [
@@ -35,10 +37,14 @@ export async function pickMailboxForSend(candidateMailboxIds?: number[]) {
   }
 
   const candidates = await db
-    .select()
+    .select({ mailbox: mailboxes, domain: domains })
     .from(mailboxes)
+    .leftJoin(domains, eq(mailboxes.domainId, domains.id))
     .where(and(...conditions))
     .orderBy(asc(mailboxes.sentToday));
 
-  return candidates.find((m) => m.sentToday < effectiveDailyLimit(m)) ?? null;
+  const eligible = candidates.find(
+    ({ mailbox, domain }) => mailbox.sentToday < effectiveDailyLimit(mailbox) && domainPassesComplianceGate(domain)
+  );
+  return eligible?.mailbox ?? null;
 }

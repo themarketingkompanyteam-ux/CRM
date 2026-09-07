@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,6 +141,7 @@ export default function MailboxesPage() {
             <thead className="border-b bg-secondary/40 text-[11px] uppercase text-muted-foreground">
               <tr>
                 <th className="p-3">Email</th>
+                <th className="p-3">Domain</th>
                 <th className="p-3">Provider</th>
                 <th className="p-3">Connection</th>
                 <th className="p-3">Warmup</th>
@@ -151,9 +153,9 @@ export default function MailboxesPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Loading...</td></tr>}
+              {isLoading && <tr><td colSpan={10} className="p-6 text-center text-muted-foreground">Loading...</td></tr>}
               {!isLoading && (mailboxes?.length ?? 0) === 0 && (
-                <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">No mailboxes yet — add one to get started.</td></tr>
+                <tr><td colSpan={10} className="p-6 text-center text-muted-foreground">No mailboxes yet — add one to get started.</td></tr>
               )}
               {mailboxes?.map((m) => {
                 const limit = m.warmupStatus === "warmed" ? m.campaignDailyLimit : m.warmupStatus === "warming" ? m.warmupDailyLimit : 0;
@@ -161,6 +163,9 @@ export default function MailboxesPage() {
                 return (
                   <tr key={m.id} className="border-t align-top">
                     <td className="p-3 font-medium">{m.email}</td>
+                    <td className="p-3">
+                      <Link href="/domains" className="text-primary underline">{m.domain}</Link>
+                    </td>
                     <td className="p-3 capitalize text-muted-foreground">{m.provider}</td>
                     <td className="p-3">
                       <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize", m.connectionStatus === "connected" ? "bg-green-950 text-green-400" : m.connectionStatus === "error" ? "bg-red-950 text-red-400" : "bg-secondary text-muted-foreground")}>
