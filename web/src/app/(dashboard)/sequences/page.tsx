@@ -33,8 +33,8 @@ export default function SequencesPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Sequences</h1>
-          <p className="text-sm text-muted-foreground">Email campaigns sent through your own connected mailboxes</p>
+          <h1 className="text-xl font-semibold">Email Campaigns</h1>
+          <p className="text-sm text-muted-foreground">Sent through your own connected mailboxes (Gmail, SMTP) — capacity splits automatically across whichever you assign to a campaign</p>
         </div>
         <Link href="/sequences/new">
           <Button className="bg-primary text-primary-foreground">+ New Campaign</Button>

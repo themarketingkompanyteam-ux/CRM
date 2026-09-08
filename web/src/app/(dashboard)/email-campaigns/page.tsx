@@ -72,8 +72,11 @@ export default function EmailCampaignsPage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Email Campaigns</h1>
-          <p className="text-sm text-muted-foreground">Instantly-powered outreach sequences</p>
+          <h1 className="text-xl font-semibold">Instantly Campaigns</h1>
+          <p className="text-sm text-muted-foreground">
+            Requires sending accounts connected inside your Instantly workspace. Sending through your own
+            Gmail/SMTP mailboxes instead? Use <Link href="/sequences" className="text-primary underline">Email Campaigns</Link>.
+          </p>
         </div>
         <Link href="/email-campaigns/new">
           <Button className="bg-primary text-primary-foreground">+ Create Campaign</Button>

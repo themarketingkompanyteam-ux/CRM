@@ -14,12 +14,12 @@ const items = [
   { href: "/leads", label: "Leads", icon: "🔥" },
   { href: "/enrichment", label: "Enrichment", icon: "🔌" },
   { href: "/growth-intelligence", label: "Growth Intelligence", icon: "🧠" },
-  { href: "/email-campaigns", label: "Email Campaigns", icon: "📧" },
   { href: "/domains", label: "Domains", icon: "🌐" },
   { href: "/mailboxes", label: "Mailboxes", icon: "📬" },
-  { href: "/sequences", label: "Sequences", icon: "🔁" },
+  { href: "/sequences", label: "Email Campaigns", icon: "📧" },
   { href: "/sent-emails", label: "Sent Emails", icon: "📤" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
+  { href: "/email-campaigns", label: "Instantly (optional)", icon: "🔌" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

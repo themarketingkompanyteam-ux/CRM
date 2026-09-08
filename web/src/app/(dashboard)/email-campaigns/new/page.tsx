@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -162,8 +163,12 @@ export default function NewEmailCampaignPage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="mb-1 text-xl font-semibold">Create Email Campaign</h1>
-      <p className="mb-6 text-sm text-muted-foreground">Instantly remains the sending provider — this wizard only builds the campaign.</p>
+      <h1 className="mb-1 text-xl font-semibold">Create Instantly Campaign</h1>
+      <p className="mb-1 text-sm text-muted-foreground">Instantly remains the sending provider — this wizard only builds the campaign, and requires sending accounts connected inside your Instantly workspace.</p>
+      <p className="mb-6 text-sm text-muted-foreground">
+        Want to send through your own Gmail/SMTP mailboxes instead? Use{" "}
+        <Link href="/sequences/new" className="text-primary underline">Email Campaigns</Link> — no Instantly account needed.
+      </p>
 
       <div className="mb-6 flex gap-1 text-xs">
         {STEPS.map((s, i) => (
