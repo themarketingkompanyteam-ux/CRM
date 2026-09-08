@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { emailCampaigns, emailCampaignSteps, emailSendingAccounts } from "@/db/schema";
 import { instantlyProvider } from "@/lib/email/instantly";
@@ -42,7 +42,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     sendingAccounts = await db
       .select()
       .from(emailSendingAccounts)
-      .where(sql`${emailSendingAccounts.email} = ANY(${campaign.sendingAccountEmails})`);
+      .where(inArray(emailSendingAccounts.email, campaign.sendingAccountEmails));
   }
 
   let remoteAnalytics = null;

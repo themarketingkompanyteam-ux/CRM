@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
@@ -23,7 +23,54 @@ type Enrollment = {
   lastName: string | null;
   email: string | null;
   companyName: string | null;
+  sendEta: string | null; // ISO timestamp, "next_tick", or null
+  blockedReason: string | null;
 };
+
+/** Live mm:ss (or h:mm:ss / d:hh:mm:ss for longer waits) countdown to a target Date. */
+function Countdown({ target }: { target: Date }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalSeconds = Math.max(0, Math.floor((target.getTime() - now) / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+
+  if (totalSeconds <= 0) return <span>Sending now...</span>;
+  if (days > 0) return <span>{days}d {pad(hours)}h {pad(minutes)}m</span>;
+  if (hours > 0) return <span>{pad(hours)}:{pad(minutes)}:{pad(seconds)}</span>;
+  return <span>{pad(minutes)}:{pad(seconds)}</span>;
+}
+
+/** Counts down to the next 2-minute mark — the queue checks for due sends every 2 minutes. */
+function NextTickCountdown() {
+  const [target] = useState(() => new Date(Math.ceil(Date.now() / (2 * 60 * 1000)) * (2 * 60 * 1000)));
+  return <Countdown target={target} />;
+}
+
+function SendEtaCell({ enrollment }: { enrollment: Enrollment }) {
+  if (enrollment.status !== "active") return <span className="text-muted-foreground">—</span>;
+  if (enrollment.blockedReason === "no_capacity_today") {
+    return <span className="text-amber-400">Mailbox at daily limit — resumes tomorrow</span>;
+  }
+  if (enrollment.sendEta === "next_tick") {
+    return (
+      <span className="text-primary">
+        Sending in <NextTickCountdown />
+      </span>
+    );
+  }
+  if (enrollment.sendEta) {
+    return <Countdown target={new Date(enrollment.sendEta)} />;
+  }
+  return <span className="text-muted-foreground">—</span>;
+}
 
 const ENROLLMENT_STATUS_COLORS: Record<string, string> = {
   active: "bg-secondary text-muted-foreground",
@@ -48,7 +95,7 @@ export default function SequenceDetailPage() {
   const { data: enrollments } = useQuery({
     queryKey: ["sequence-enrollments", sequenceId],
     queryFn: () => apiFetch<Enrollment[]>(`/api/sequences/${sequenceId}/enrollments`),
-    refetchInterval: 20000,
+    refetchInterval: 10000,
   });
 
   const [steps, setSteps] = useState<Step[] | null>(null);
@@ -177,7 +224,7 @@ export default function SequenceDetailPage() {
                   <th className="pb-2 pr-3">Email</th>
                   <th className="pb-2 pr-3">Step</th>
                   <th className="pb-2 pr-3">Status</th>
-                  <th className="pb-2">Next Send</th>
+                  <th className="pb-2">Sends In</th>
                 </tr>
               </thead>
               <tbody>
@@ -191,7 +238,7 @@ export default function SequenceDetailPage() {
                         {e.status.replace("_", " ")}
                       </span>
                     </td>
-                    <td className="py-2 text-muted-foreground">{e.status === "active" ? new Date(e.nextSendAt).toLocaleString() : "—"}</td>
+                    <td className="py-2 text-muted-foreground"><SendEtaCell enrollment={e} /></td>
                   </tr>
                 ))}
               </tbody>

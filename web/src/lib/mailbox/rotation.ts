@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { mailboxes, domains } from "@/db/schema";
 import { domainPassesComplianceGate } from "@/lib/domains/service";
@@ -33,7 +33,10 @@ export async function pickMailboxForSend(candidateMailboxIds?: number[]) {
     sql`${mailboxes.warmupStatus} IN ('warming', 'warmed')`,
   ];
   if (candidateMailboxIds && candidateMailboxIds.length > 0) {
-    conditions.push(sql`${mailboxes.id} = ANY(${candidateMailboxIds})`);
+    // Raw `= ANY(${array})` fails to bind a JS array through postgres-js in this context
+    // (throws ERR_INVALID_ARG_TYPE) — drizzle's inArray() generates a safe parameterized
+    // IN (...) instead.
+    conditions.push(inArray(mailboxes.id, candidateMailboxIds));
   }
 
   const candidates = await db
