@@ -70,7 +70,6 @@ export async function runGrowthIntelligencePipeline(contactId: number, options: 
         location: contact.location ?? undefined,
         jobTitle: contact.jobTitle ?? undefined,
       });
-      const start = Date.now();
       const result = await geminiProvider.generateStructured<{
         companySummary: string;
         industry: string;

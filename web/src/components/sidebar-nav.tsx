@@ -18,6 +18,7 @@ const items = [
   { href: "/domains", label: "Domains", icon: "🌐" },
   { href: "/mailboxes", label: "Mailboxes", icon: "📬" },
   { href: "/sequences", label: "Sequences", icon: "🔁" },
+  { href: "/sent-emails", label: "Sent Emails", icon: "📤" },
   { href: "/pipeline", label: "Pipeline", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];

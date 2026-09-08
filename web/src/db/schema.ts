@@ -681,6 +681,9 @@ export const mailboxes = pgTable(
     warmupStartedAt: timestamp("warmup_started_at"),
     warmupDay: integer("warmup_day").default(0).notNull(),
     warmupDailyLimit: integer("warmup_daily_limit").default(5).notNull(),
+    // Guards against advancing warmup more than once per calendar day even if the ramp job is
+    // checked more often than daily (it is, for self-healing after downtime — see warmup.ts).
+    lastWarmupCheckAt: timestamp("last_warmup_check_at"),
     // Capacity: total = warmup allocation + campaign allocation, enforced separately.
     campaignDailyLimit: integer("campaign_daily_limit").default(30).notNull(),
     // Daily counters, reset by the reset-daily-counters job.
@@ -756,6 +759,10 @@ export const sequences = pgTable("sequences", {
   name: text("name").notNull(),
   description: text("description"),
   status: varchar("status", { length: 20 }).default("draft").notNull(),
+  // Which mailboxes this campaign is allowed to send from — the rotation engine picks the
+  // least-utilized eligible one among these on every send, so capacity naturally splits across
+  // however many are listed here (add more later and they're included on the next send).
+  mailboxIds: jsonb("mailbox_ids").$type<number[]>().default([]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

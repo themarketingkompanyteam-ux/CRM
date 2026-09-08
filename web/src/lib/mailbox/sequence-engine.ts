@@ -45,7 +45,10 @@ export async function processDueSequenceSends() {
     const result = await sendToContact(
       enrollment.contactId,
       { subject: step.subject, body: step.body },
-      { sequenceEnrollmentId: enrollment.id }
+      {
+        sequenceEnrollmentId: enrollment.id,
+        candidateMailboxIds: sequence.mailboxIds && sequence.mailboxIds.length > 0 ? sequence.mailboxIds : undefined,
+      }
     );
 
     if (!result.ok && result.reason === "No eligible mailbox with remaining capacity") {

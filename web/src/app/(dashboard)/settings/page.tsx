@@ -145,6 +145,15 @@ type GiSettings = {
   refreshDays: number;
 };
 
+function GiToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3 py-1.5 text-sm">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
+}
+
 function GrowthIntelligenceSection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -171,19 +180,6 @@ function GrowthIntelligenceSection() {
 
   const s = data?.settings;
 
-  function Toggle({ label, field }: { label: string; field: keyof GiSettings }) {
-    return (
-      <label className="flex items-center justify-between gap-3 py-1.5 text-sm">
-        <span>{label}</span>
-        <input
-          type="checkbox"
-          checked={!!s?.[field]}
-          onChange={(e) => saveMutation.mutate({ [field]: e.target.checked })}
-        />
-      </label>
-    );
-  }
-
   return (
     <Card className="mt-6 max-w-4xl">
       <CardHeader>
@@ -198,7 +194,7 @@ function GrowthIntelligenceSection() {
         {usage && (
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-lg border p-3 text-sm">
-              <div className="text-xs text-muted-foreground">Today's usage</div>
+              <div className="text-xs text-muted-foreground">Today&apos;s usage</div>
               <div className="font-bold">{usage.usedToday} / {usage.dailyLimit}</div>
             </div>
             <div className="rounded-lg border p-3 text-sm">
@@ -218,14 +214,14 @@ function GrowthIntelligenceSection() {
 
         <div className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
           <div>
-            <Toggle label="Auto-analyze HOT leads" field="autoAnalyzeHot" />
-            <Toggle label="Auto-analyze WARM leads" field="autoAnalyzeWarm" />
-            <Toggle label="Auto-enrich HOT leads first" field="autoEnrichHot" />
+            <GiToggle label="Auto-analyze HOT leads" checked={!!s?.autoAnalyzeHot} onChange={(v) => saveMutation.mutate({ autoAnalyzeHot: v })} />
+            <GiToggle label="Auto-analyze WARM leads" checked={!!s?.autoAnalyzeWarm} onChange={(v) => saveMutation.mutate({ autoAnalyzeWarm: v })} />
+            <GiToggle label="Auto-enrich HOT leads first" checked={!!s?.autoEnrichHot} onChange={(v) => saveMutation.mutate({ autoEnrichHot: v })} />
           </div>
           <div>
-            <Toggle label="Auto-generate sales brief" field="autoGenerateSalesBrief" />
-            <Toggle label="Auto-generate outreach" field="autoGenerateOutreach" />
-            <Toggle label="Auto-push qualified leads to Prospecting" field="autoPushToProspecting" />
+            <GiToggle label="Auto-generate sales brief" checked={!!s?.autoGenerateSalesBrief} onChange={(v) => saveMutation.mutate({ autoGenerateSalesBrief: v })} />
+            <GiToggle label="Auto-generate outreach" checked={!!s?.autoGenerateOutreach} onChange={(v) => saveMutation.mutate({ autoGenerateOutreach: v })} />
+            <GiToggle label="Auto-push qualified leads to Prospecting" checked={!!s?.autoPushToProspecting} onChange={(v) => saveMutation.mutate({ autoPushToProspecting: v })} />
           </div>
         </div>
 

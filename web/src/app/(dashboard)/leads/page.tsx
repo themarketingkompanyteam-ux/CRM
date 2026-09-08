@@ -44,7 +44,6 @@ type Lead = {
   aiOpportunityScore?: number | null;
 };
 
-type Stats = { hot: number; warm: number; toCall: number; callBack: number; booked: number };
 type AvailableCounts = { hot: number; warm: number; cold: number; total: number };
 
 const BUCKETS = [

@@ -16,7 +16,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json();
 
   const updatable: Record<string, unknown> = {};
-  for (const key of ["name", "description", "status"] as const) {
+  for (const key of ["name", "description", "status", "mailboxIds"] as const) {
     if (body[key] !== undefined) updatable[key] = body[key];
   }
   updatable.updatedAt = new Date();

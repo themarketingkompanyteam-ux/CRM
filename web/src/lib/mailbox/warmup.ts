@@ -3,6 +3,10 @@ import { db } from "@/db";
 import { mailboxes, mailboxAuditLog } from "@/db/schema";
 import { calculateMailboxHealth } from "./health";
 
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
+}
+
 /**
  * Default conservative ramp: start at 5/day, +1/day up to day 14 (~19/day), then hold until
  * the operator marks it "warmed" (or raise WARMUP_RAMP_DAYS). These are defaults, not
@@ -20,6 +24,7 @@ export async function startWarmup(mailboxId: number) {
       warmupStartedAt: new Date(),
       warmupDay: 1,
       warmupDailyLimit: DEFAULT_WARMUP_START,
+      lastWarmupCheckAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(mailboxes.id, mailboxId));
@@ -27,13 +32,18 @@ export async function startWarmup(mailboxId: number) {
 }
 
 /**
- * Runs once per day per warming mailbox. Never fabricates engagement — this only decides
- * whether to raise, hold, reduce, or pause the REAL sending cap based on yesterday's actual
- * delivery data (bounces are the only reliable signal we have without provider reputation APIs).
+ * Applies at most once per calendar day per warming mailbox, guarded by lastWarmupCheckAt
+ * rather than trusting the caller to only invoke this once a day — the scheduler calls this
+ * far more often than daily specifically so a missed midnight trigger (e.g. the process was
+ * down) self-heals on the next tick instead of silently skipping a day's ramp decision. Never
+ * fabricates engagement — this only decides whether to raise, hold, reduce, or pause the REAL
+ * sending cap based on yesterday's actual delivery data (bounces are the only reliable signal
+ * we have without provider reputation APIs).
  */
 export async function processMailboxWarmup(mailboxId: number) {
   const [mailbox] = await db.select().from(mailboxes).where(eq(mailboxes.id, mailboxId)).limit(1);
   if (!mailbox || mailbox.warmupStatus !== "warming") return null;
+  if (mailbox.lastWarmupCheckAt && isSameCalendarDay(mailbox.lastWarmupCheckAt, new Date())) return null;
 
   const health = calculateMailboxHealth(mailbox);
   const nextDay = mailbox.warmupDay + 1;
@@ -64,6 +74,7 @@ export async function processMailboxWarmup(mailboxId: number) {
       warmupDailyLimit: nextLimit,
       warmupStatus: isPausing ? "paused" : isGraduating ? "warmed" : "warming",
       campaignEnabled: isPausing ? 0 : mailbox.campaignEnabled,
+      lastWarmupCheckAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(mailboxes.id, mailboxId));
