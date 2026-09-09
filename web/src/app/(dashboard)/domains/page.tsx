@@ -66,6 +66,94 @@ function SetSelectorInline({ current, onSave }: { current: string | null; onSave
   );
 }
 
+type HostingerRecord = { name: string; type: string; ttl: number; records: { content: string }[] };
+
+function HostingerDnsDialog({ domainId, domainName }: { domainId: number; domainName: string }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("@");
+  const [type, setType] = useState("TXT");
+  const [content, setContent] = useState("");
+  const [ttl, setTtl] = useState(300);
+
+  const { data: records, isLoading } = useQuery({
+    queryKey: ["hostinger-records", domainId],
+    queryFn: () => apiFetch<HostingerRecord[]>(`/api/domains/${domainId}/hostinger-records`),
+    enabled: open,
+  });
+
+  const pushMutation = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/domains/${domainId}/hostinger-records`, {
+        method: "POST",
+        body: JSON.stringify({ records: [{ name, type, ttl, content }] }),
+      }),
+    onSuccess: async () => {
+      toast.success(`Record pushed to Hostinger — re-checking ${domainName}...`);
+      queryClient.invalidateQueries({ queryKey: ["hostinger-records", domainId] });
+      await apiFetch(`/api/domains/${domainId}/check`, { method: "POST" });
+      queryClient.invalidateQueries({ queryKey: ["domains"] });
+      setContent("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline">Manage DNS</Button>} />
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Hostinger DNS — {domainName}</DialogTitle></DialogHeader>
+        <div className="space-y-4 text-sm">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Current records</div>
+            {isLoading && <p className="text-muted-foreground">Loading...</p>}
+            <div className="max-h-48 space-y-1.5 overflow-y-auto">
+              {records?.map((r, i) => (
+                <div key={i} className="rounded-md border p-2 text-xs">
+                  <span className="font-semibold">{r.type}</span> {r.name} (TTL {r.ttl})
+                  {r.records.map((rec, j) => <div key={j} className="text-muted-foreground">{rec.content}</div>)}
+                </div>
+              ))}
+              {records && records.length === 0 && <p className="text-muted-foreground">No records found.</p>}
+            </div>
+          </div>
+
+          <div className="border-t pt-3">
+            <div className="mb-2 text-xs font-semibold uppercase text-muted-foreground">Add / update a record</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-xs">Type</Label>
+                <select className="w-full rounded-md border bg-background px-2 py-1.5 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
+                  {["MX", "TXT", "CNAME", "A"].map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Name (@ for root, _dmarc for DMARC)</Label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} />
+              </div>
+            </div>
+            <div className="mt-2 space-y-1">
+              <Label className="text-xs">Content / value</Label>
+              <Input value={content} onChange={(e) => setContent(e.target.value)} placeholder="v=spf1 include:_spf.google.com ~all" />
+            </div>
+            <div className="mt-2 space-y-1">
+              <Label className="text-xs">TTL (seconds)</Label>
+              <Input type="number" className="w-28" value={ttl} onChange={(e) => setTtl(Number(e.target.value))} />
+            </div>
+            <Button
+              className="mt-3 bg-primary text-primary-foreground"
+              disabled={!content || pushMutation.isPending}
+              onClick={() => pushMutation.mutate()}
+            >
+              {pushMutation.isPending ? "Pushing..." : "Push to Hostinger"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CheckBadge({ status }: { status: string }) {
   const map: Record<string, { icon: string; cls: string }> = {
     pass: { icon: "✓", cls: "text-green-400" },
@@ -219,9 +307,12 @@ export default function DomainsPage() {
                   <td className="p-3">{d.dailyCapacity}/day</td>
                   <td className="p-3 text-muted-foreground">{d.dnsLastCheckedAt ? new Date(d.dnsLastCheckedAt).toLocaleString() : "Never"}</td>
                   <td className="p-3">
-                    <Button size="sm" variant="outline" disabled={checkMutation.isPending} onClick={() => checkMutation.mutate(d.id)}>
-                      Run Check
-                    </Button>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button size="sm" variant="outline" disabled={checkMutation.isPending} onClick={() => checkMutation.mutate(d.id)}>
+                        Run Check
+                      </Button>
+                      <HostingerDnsDialog domainId={d.id} domainName={d.domain} />
+                    </div>
                   </td>
                 </tr>
               ))}

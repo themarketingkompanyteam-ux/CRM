@@ -273,6 +273,58 @@ type InstantlyStatus = {
   campaignCount: number;
 };
 
+function HostingerSection() {
+  const queryClient = useQueryClient();
+
+  const testMutation = useMutation({
+    mutationFn: () => apiFetch<{ ok: boolean; message: string }>("/api/integrations/hostinger/test", { method: "POST" }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["hostinger-domains"] });
+      if (result.ok) toast.success(result.message);
+      else toast.error(result.message);
+    },
+  });
+
+  const { data: hostingerDomains, isFetching } = useQuery({
+    queryKey: ["hostinger-domains"],
+    queryFn: () => apiFetch<{ domain: string }[]>("/api/integrations/hostinger/domains"),
+  });
+
+  return (
+    <Card className="mt-6 max-w-4xl">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-sm">
+          🌐 Hostinger (Domain DNS)
+          {hostingerDomains && hostingerDomains.length > 0 && (
+            <span className="rounded-full bg-green-950 px-2 py-0.5 text-[11px] font-semibold text-green-400">
+              Connected
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={testMutation.isPending} onClick={() => testMutation.mutate()}>
+            Test Connection
+          </Button>
+        </div>
+        {isFetching && <p className="text-muted-foreground">Loading domains...</p>}
+        {hostingerDomains && hostingerDomains.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {hostingerDomains.map((d) => (
+              <span key={d.domain} className="rounded-full border px-2 py-0.5 text-xs">{d.domain}</span>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Used to read and update DNS zone records (MX/SPF/DKIM/DMARC) for domains bought through
+          Hostinger, from the Domains page — never touches unrelated records on the zone.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 function InstantlySection() {
   const queryClient = useQueryClient();
   const { data } = useQuery({
@@ -486,6 +538,7 @@ export default function SettingsPage() {
       <EnrichmentProvidersSection />
       <GrowthIntelligenceSection />
       <InstantlySection />
+      <HostingerSection />
     </div>
   );
 }
