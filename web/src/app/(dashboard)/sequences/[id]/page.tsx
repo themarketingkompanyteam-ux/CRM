@@ -56,8 +56,12 @@ function NextTickCountdown() {
 
 function SendEtaCell({ enrollment }: { enrollment: Enrollment }) {
   if (enrollment.status !== "active") return <span className="text-muted-foreground">—</span>;
-  if (enrollment.blockedReason === "no_capacity_today") {
-    return <span className="text-amber-400">Mailbox at daily limit — resumes tomorrow</span>;
+  if (enrollment.blockedReason === "no_capacity_today" && enrollment.sendEta) {
+    return (
+      <span className="text-amber-400">
+        Daily limit reached — resumes in <Countdown target={new Date(enrollment.sendEta)} />
+      </span>
+    );
   }
   if (enrollment.sendEta === "next_tick") {
     return (

@@ -40,6 +40,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       .reduce((sum, m) => sum + Math.max(0, effectiveDailyLimit(m) - m.sentToday), 0);
   }
 
+  // The daily counters reset in the database (Postgres runs in UTC), so this is the exact,
+  // real moment capacity actually reopens — not a vague "tomorrow" guess.
+  const nextUtcMidnight = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString();
+
   const now = Date.now();
   let dueSlotsUsed = 0;
   const enriched = rows.map((r) => {
@@ -56,7 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     if (dueSlotsUsed <= capacityRemaining) {
       return { ...r, sendEta: "next_tick" as const, blockedReason: null };
     }
-    return { ...r, sendEta: null, blockedReason: "no_capacity_today" };
+    return { ...r, sendEta: nextUtcMidnight, blockedReason: "no_capacity_today" };
   });
 
   return NextResponse.json(enriched);
